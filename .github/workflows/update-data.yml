@@ -1,5 +1,6 @@
 # 매일 전국 실거래가 수집 → 집계 → GitHub Release 'data'에 업로드 (앱이 여기서 읽음)
 # 필요한 Secrets: DATA_GO_KR_KEY (공공데이터포털, 국토교통부 아파트 매매 실거래가 상세 자료)
+#                KOSIS_KEY (KOSIS 공유서비스, 미분양·인구이동·준공 통계)
 name: update-data
 
 on:
@@ -48,6 +49,12 @@ jobs:
         with:
           path: data/raw
           key: raw-${{ github.run_id }}
+
+      - name: 외부 요인 수집 (KOSIS)
+        continue-on-error: true   # 실패해도 실거래 집계는 진행
+        env:
+          KOSIS_KEY: ${{ secrets.KOSIS_KEY }}
+        run: python -u kosis.py
 
       - name: 집계
         run: python -u build.py

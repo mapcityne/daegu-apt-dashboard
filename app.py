@@ -218,7 +218,12 @@ with tabs[0]:
                     ", ".join(f"{x['단지']}({x['지역']}, {x['거래수']}건"
                               + (f", 1년 {B.p(x['변동'])}" if x.get("변동") is not None else "") + ")"
                               for x in top))
-    st.caption("입주물량·미분양·인구 이동·규제 같은 외부 요인은 공공통계 연결 후 이 자리에 추가됩니다.")
+    ext = A.external_factors(s, SIDO_SHORT.get(sido) if level == "시군구" else None)
+    if ext:
+        st.markdown("**공공통계로 본 수요·공급 요인**")
+        md_list(ext)
+        st.caption("출처: 국토교통부 시·군·구별 미분양현황, 주택건설 준공실적(시도) · 국가데이터처 시군구별 이동자수 "
+                   "(KOSIS). '시 전체 값'은 일반구 통계가 없어 시 단위 수치를 보여 준 것입니다.")
 
     sec = B.age_section(s)
     if sec:

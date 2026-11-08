@@ -121,6 +121,13 @@ def main():
     pc_sgg = {k: v for k, v in pc.groupby("시군구코드")}
     empty = base.iloc[0:0]
 
+    def ext(name):
+        f = OUT_DIR / f"ext_{name}.parquet"
+        return pd.read_parquet(f) if f.exists() else None
+    unsold, mig, comp = ext("unsold"), ext("migration"), ext("completion")
+    log(f"외부 요인: 미분양 {'O' if unsold is not None else 'X'} · 인구이동 {'O' if mig is not None else 'X'} · "
+        f"준공 {'O' if comp is not None else 'X'}")
+
     stats_rows, index_rows = [], []
     for code, level, name, parent in units:
         if level == "전국":
@@ -134,7 +141,10 @@ def main():
         idx = A.price_index(b, min_month_n=MIN_MONTH_N[level]) if len(b) else \
             pd.DataFrame(columns=["지수", "거래수"])
         st = A.region_stats(b, r, p, idx, ref) if len(b) else {"판정": "판단 보류"}
-        stats_rows.append({"코드": code, "단계": level, "이름": name, "상위": parent, **st})
+        ex = A.ext_stats(code, unsold, mig, None, ref)
+        # 준공은 시도 단위 통계 → 시군구는 소속 시도 값
+        ex.update(A.ext_stats(code if level != "시군구" else parent, None, None, comp, ref))
+        stats_rows.append({"코드": code, "단계": level, "이름": name, "상위": parent, **st, **ex})
         if len(idx):
             index_rows.append(idx.reset_index().assign(코드=code))
     log(f"지역 통계 {len(stats_rows)}개 ({time.time() - t0:.0f}초)")

@@ -370,3 +370,83 @@ def budget_search(df: pd.DataFrame, ref: pd.Timestamp, lo: float, hi: float,
     prev = window(df, ref, 12, span=months).groupby("평형키")["거래금액_억"].median()
     g["1년전대비"] = (g["중위거래가"] / prev.reindex(g.index) - 1) * 100
     return g.reset_index()
+
+
+# ───────────────────────── 외부 요인 (KOSIS) ─────────────────────────
+def ext_stats(code: str, unsold, mig, comp, ref) -> dict:
+    """지역 코드의 미분양·인구 순이동·아파트 준공 요약. 표가 없으면 빈 dict."""
+    s = {}
+    if unsold is not None:
+        u = unsold[unsold["코드"] == code].set_index("월")["미분양"].sort_index()
+        if len(u):
+            last = u.index.max()
+            s["미분양_기준월"] = f"{last:%Y.%m}"
+            s["미분양"] = float(u.iloc[-1])
+            ago = last - pd.DateOffset(months=12)
+            s["미분양_1년전"] = float(u[ago]) if ago in u.index else None
+            ago6 = last - pd.DateOffset(months=6)
+            s["미분양_6개월전"] = float(u[ago6]) if ago6 in u.index else None
+            s["미분양_시단위"] = bool(unsold[unsold["코드"] == code]["시단위"].any())
+    if mig is not None:
+        m = mig[mig["코드"] == code].set_index("월").sort_index()
+        if len(m) >= 12:
+            last = m.index.max()
+            w = m[m.index > last - pd.DateOffset(months=12)]
+            p = m[(m.index <= last - pd.DateOffset(months=12)) & (m.index > last - pd.DateOffset(months=24))]
+            s["인구_기준월"] = f"{last:%Y.%m}"
+            s["순이동_12개월"] = float(w["순이동"].sum())
+            s["전입_12개월"] = float(w["전입"].sum())
+            s["순이동_전년12개월"] = float(p["순이동"].sum()) if len(p) >= 12 else None
+            s["인구_시단위"] = bool(m["시단위"].any())
+    if comp is not None:
+        c = comp[comp["코드"] == code].set_index("월")["아파트준공"].sort_index()
+        if len(c) >= 12:
+            last = c.index.max()
+            s["준공_기준월"] = f"{last:%Y.%m}"
+            s["준공_12개월"] = float(c[c.index > last - pd.DateOffset(months=12)].sum())
+            prev = c[(c.index <= last - pd.DateOffset(months=12)) & (c.index > last - pd.DateOffset(months=24))]
+            s["준공_전년12개월"] = float(prev.sum()) if len(prev) >= 12 else None
+    return s
+
+
+def external_factors(s: dict, scope_sido: str | None = None) -> list[str]:
+    """공공통계로 본 수요·공급 요인 문장."""
+    out = []
+    u, u1 = s.get("미분양"), s.get("미분양_1년전")
+    if u is not None:
+        tail = " (시 전체 값)" if s.get("미분양_시단위") else ""
+        if u1:
+            ch = (u / u1 - 1) * 100
+            if u >= 50 and ch >= 20:
+                out.append(f"**미분양 증가**: {s['미분양_기준월']} {u:,.0f}호로 1년 전({u1:,.0f}호)보다 "
+                           f"{ch:+.0f}%{tail}. 팔리지 않은 새 집이 쌓이면 주변 시세에 부담이 됩니다.")
+            elif u1 >= 50 and ch <= -20:
+                out.append(f"**미분양 소진**: {s['미분양_기준월']} {u:,.0f}호로 1년 전({u1:,.0f}호)보다 "
+                           f"{ch:+.0f}%{tail}. 신규 공급이 소화되고 있어 가격을 받치는 요인입니다.")
+            else:
+                out.append(f"미분양 {u:,.0f}호({s['미분양_기준월']}, 1년 전 {u1:,.0f}호){tail}.")
+        else:
+            out.append(f"미분양 {u:,.0f}호({s['미분양_기준월']}){tail}.")
+    n, n0, inflow = s.get("순이동_12개월"), s.get("순이동_전년12개월"), s.get("전입_12개월")
+    if n is not None and inflow:
+        rate = n / inflow * 100
+        tail = " (시 전체 값)" if s.get("인구_시단위") else ""
+        if rate >= 3:
+            out.append(f"**인구 순유입**: 최근 12개월 {n:+,.0f}명{tail}. 전입이 전출보다 많아 실수요를 받칩니다.")
+        elif rate <= -3:
+            out.append(f"**인구 순유출**: 최근 12개월 {n:+,.0f}명{tail}. 실수요 기반이 약해지는 요인입니다.")
+        else:
+            out.append(f"인구 이동은 균형에 가깝습니다(최근 12개월 순이동 {n:+,.0f}명{tail}).")
+    c, c0 = s.get("준공_12개월"), s.get("준공_전년12개월")
+    if c is not None and c0:
+        ch = (c / c0 - 1) * 100
+        where = f"{scope_sido} 전체 " if scope_sido else ""
+        if ch >= 30:
+            out.append(f"**입주 물량 증가**: {where}아파트 준공 최근 12개월 {c:,.0f}호(전년 대비 {ch:+.0f}%). "
+                       "새 아파트 입주가 몰리면 매물·전세 공급이 늘어 가격에 부담입니다.")
+        elif ch <= -30:
+            out.append(f"**입주 물량 감소**: {where}아파트 준공 최근 12개월 {c:,.0f}호(전년 대비 {ch:+.0f}%). "
+                       "공급 공백은 가격을 받치는 요인입니다.")
+        else:
+            out.append(f"{where}아파트 준공은 최근 12개월 {c:,.0f}호로 전년과 비슷합니다({ch:+.0f}%).")
+    return out

@@ -105,7 +105,7 @@ p6 = pc_all["6개월전대비"].dropna()
 
 st.caption(f"최근 3개월 = {A.window_label(REF, 0)} · 6개월 전 = {A.window_label(REF, 6)} · "
            f"1년 전 = {A.window_label(REF, 12)} · 변동률은 같은 단지·같은 면적끼리 비교한 중위값")
-k = st.columns(6)
+k = st.columns(3) + st.columns(3)
 k[0].metric("최근 3개월 거래", f"{len(now):,}건",
             f"{(len(now) / len(ago) - 1) * 100:+.0f}% 전년동기" if len(ago) else None)
 k[1].metric("중위 거래가", f"{now['거래금액_억'].median():,.2f}억")

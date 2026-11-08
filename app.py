@@ -7,6 +7,7 @@ import io
 import json
 import os
 import re
+import time
 import urllib.request
 
 import pandas as pd
@@ -21,8 +22,9 @@ import mapview as MV
 from regions import GEOJSON, SIDO_SHORT, regions
 
 st.set_page_config(page_title="아파트 시장 신호", page_icon="🏢", layout="wide")
-RELEASE = os.environ.get(
-    "DATA_URL", "https://github.com/mapcityne/daegu-apt-dashboard/releases/download/data")
+# 1순위: data 브랜치(raw CDN), 2순위: GitHub Release
+SOURCES = [os.environ.get("DATA_URL", "https://raw.githubusercontent.com/mapcityne/daegu-apt-dashboard/data"),
+           "https://github.com/mapcityne/daegu-apt-dashboard/releases/download/data"]
 CHART = dict(margin=dict(l=0, r=0, t=10, b=0), legend_title=None)
 UP, DOWN, FLAT = "#d6336c", "#1c7ed6", "#868e96"
 
@@ -32,8 +34,19 @@ def _read(name: str) -> bytes:
     local = OUT_DIR / name
     if local.exists():
         return local.read_bytes()
-    with urllib.request.urlopen(f"{RELEASE}/{name}", timeout=60) as r:
-        return r.read()
+    last = None
+    for base in SOURCES:
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(f"{base}/{name}", headers={"User-Agent": "apt-signal-app"})
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return r.read()
+            except Exception as e:  # noqa: BLE001
+                last = e
+                if getattr(e, "code", None) == 404:
+                    break  # 이 경로엔 없음 → 다음 경로
+                time.sleep(1.5)
+    raise last
 
 
 @st.cache_data(ttl=3 * 3600, show_spinner="데이터 불러오는 중…")

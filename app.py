@@ -51,7 +51,10 @@ with st.sidebar:
     m_from, m_to = st.select_slider("기간 (지도·추이·TOP10)", options=months,
                                     value=(months[0], months[-1]),
                                     format_func=lambda p: p.strftime("%Y.%m"))
-    ref_p = st.select_slider("분석 기준월", options=months, value=months[-1],
+    # 마지막 달이 월초 며칠분뿐이면 직전 달을 기본 기준월로
+    last_day = df_all["계약일자"].max()
+    default_ref = months[-2] if len(months) > 1 and last_day.day < 25 else months[-1]
+    ref_p = st.select_slider("분석 기준월", options=months, value=default_ref,
                              format_func=lambda p: p.strftime("%Y.%m"),
                              help="상승·하락, 신고가, 예산 찾기의 '최근 3개월'이 끝나는 달. "
                                   "최근 달은 신고 기한(30일) 때문에 거래가 덜 잡히므로 "
@@ -208,7 +211,7 @@ with tabs[0]:
         fig4 = px.bar(pb, x="구군", y="비중", color="가격대",
                       category_orders={"구군": GU_ORDER, "가격대": A.PRICE_LABELS},
                       labels={"비중": "%", "구군": ""}, hover_data={"건수": True},
-                      color_discrete_sequence=px.colors.sequential.Blues)
+                      color_discrete_sequence=["#c6dbef", "#6baed6", "#3182bd", "#08519c", "#08306b"])
         fig4.update_layout(height=330, **CHART)
         st.plotly_chart(fig4, width="stretch")
 

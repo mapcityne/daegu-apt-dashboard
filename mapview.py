@@ -22,7 +22,7 @@ def build_map(on_map: pd.DataFrame) -> folium.Map:
         hi = lo + 1
     cmap = cm.LinearColormap(["#2c7bb6", "#ffffbf", "#d7191c"], vmin=lo, vmax=hi,
                              caption="기간 중위 평당가 (만원/3.3㎡)")
-    m = folium.Map(DAEGU_CENTER, zoom_start=11, tiles="cartodbpositron")
+    m = folium.Map(DAEGU_CENTER, zoom_start=11, tiles="OpenStreetMap")
     for r in on_map.itertuples(index=False):
         popup = (f"<b>{r.단지명}</b><br>{r.구군} {r.법정동} · {_int(r.건축년도, '년')}<br>"
                  f"최근 거래 {r.계약일자:%Y.%m.%d}<br>"

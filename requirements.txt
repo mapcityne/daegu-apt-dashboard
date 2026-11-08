@@ -6,3 +6,4 @@ streamlit-folium>=0.22
 folium>=0.17
 branca
 plotly>=5.20
+matplotlib

@@ -22,6 +22,7 @@
 """
 import argparse
 import os
+import re
 import signal
 import sys
 import threading
@@ -51,9 +52,15 @@ KEEP_COLUMNS = ["법정동시군구코드", "구군", "법정동", "단지명", 
                 "층", "건축년도", "거래유형", "해제여부", "해제"]
 
 
+def _mask(text) -> str:
+    """공개 저장소 Actions 로그에 키가 남지 않도록 URL의 serviceKey 값을 가린다.
+    (Decoding 키는 URL 인코딩되어 찍히므로 GitHub의 시크릿 자동 마스킹이 안 걸린다)"""
+    return re.sub(r"(serviceKey=)[^&\s)'\"]+", r"\1***", str(text))
+
+
 def log(*args):
     """Actions 로그에 즉시 보이도록 flush 해서 출력한다."""
-    print(*args, flush=True)
+    print(*(_mask(a) for a in args), flush=True)
 
 
 def setup_stdout():

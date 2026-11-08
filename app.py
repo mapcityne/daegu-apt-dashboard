@@ -1,563 +1,189 @@
-"""전국 아파트 실거래가 시장 신호 대시보드.
+"""k-apts: 전국 아파트 실거래가 시장 신호.
 
 실행:  streamlit run app.py
-데이터: data/out (로컬) → 없으면 GitHub Release 'data'에서 내려받는다.
+메뉴:  홈 / 지역 시세 / 순위 / 예산 맞춤 / 안내 (상단 메뉴, 사이드바 없음)
 """
-import io
-import json
-import os
-import re
-import time
-import urllib.request
+from pathlib import Path
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
-import analysis as A
 import briefing as B
-from common import AREA_LABELS, OUT_DIR, enrich
-import mapview as MV
+import core
 import style as UI
-from regions import GEOJSON, SIDO_SHORT, regions
+import views as V
+from core import Ctx, Data
+from regions import SIDO_SHORT
 
-st.set_page_config(page_title="아파트 시장 신호 | k-apt", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="k-apts 아파트 시장 신호", page_icon="🏢", layout="wide",
+                   initial_sidebar_state="collapsed")
 UI.apply()
-# 1순위: data 브랜치(raw CDN), 2순위: GitHub Release
-SOURCES = [os.environ.get("DATA_URL", "https://raw.githubusercontent.com/mapcityne/daegu-apt-dashboard/data"),
-           "https://github.com/mapcityne/daegu-apt-dashboard/releases/download/data"]
-CHART = dict(margin=dict(l=0, r=0, t=10, b=0), legend_title=None)
+LOGO = Path(__file__).with_name("assets") / "logo.png"
 
 
-# ───────────────────────── 데이터 ─────────────────────────
-def _read(name: str) -> bytes:
-    local = OUT_DIR / name
-    if local.exists():
-        return local.read_bytes()
-    last = None
-    for base in SOURCES:
-        for attempt in range(2):
-            try:
-                req = urllib.request.Request(f"{base}/{name}", headers={"User-Agent": "apt-signal-app"})
-                with urllib.request.urlopen(req, timeout=30) as r:
-                    return r.read()
-            except Exception as e:  # noqa: BLE001
-                last = e
-                if getattr(e, "code", None) == 404:
-                    break  # 이 경로엔 없음 → 다음 경로
-                time.sleep(1.5)
-    raise last
-
-
-@st.cache_data(ttl=600)
-def load_meta() -> dict:
-    """10분마다 확인. '생성' 시각이 바뀌면 아래 표들도 새로 받는다."""
-    return json.loads(_read("meta.json"))
-
-
-@st.cache_data(ttl=24 * 3600, show_spinner="데이터 불러오는 중…", max_entries=20)
-def load_table(name: str, version: str = "") -> pd.DataFrame:
-    return pd.read_parquet(io.BytesIO(_read(name)))
-
-
-@st.cache_data(ttl=24 * 3600, show_spinner="지역 거래 불러오는 중…", max_entries=4)
-def load_trades(sido: str, version: str = "") -> pd.DataFrame:
-    df = pd.read_parquet(io.BytesIO(_read(f"trades_{sido}.parquet")))
-    df = A.prepare(enrich(df))
-    df["평형대"] = pd.Categorical(df["평형대"], categories=AREA_LABELS, ordered=True)
-    return df
-
-
-@st.cache_data
-def load_geo() -> dict:
-    return json.loads(GEOJSON.read_text(encoding="utf-8"))
-
-
-try:
-    meta = load_meta()
-    VER = meta.get("생성", "")
-    stats = load_table("stats.parquet", VER)
-    index = load_table("index.parquet", VER)
-except Exception as e:  # noqa: BLE001
-    st.title("아파트 실거래가 시장 신호")
-    st.info("전국 데이터를 처음 수집하고 있습니다. 수집·집계가 끝나면(보통 1~2시간, 한도에 걸리면 "
-            "다음 날까지) 이 화면에 자동으로 표시됩니다.\n\n"
-            "진행 상황: GitHub 저장소 Actions 탭의 `update-data` 실행 기록")
-    st.caption(f"상세: {type(e).__name__}: {e}")
-    st.stop()
-
-REF = pd.Timestamp(meta["기준월"] + "-01")
-REG = regions()
-S = stats.set_index("코드")
-
-
-BOLD = re.compile(r"\*\*(.+?)\*\*")
-
-
-def md_list(lines):
-    """마크다운 **굵게**가 한글 조사 앞에서 깨지는 문제를 피해 <b>로 렌더링."""
-    items = [BOLD.sub(r"<b>\1</b>", x).replace("~", "\\~") for x in lines]
-    st.markdown("\n".join(f"- {x}" for x in items), unsafe_allow_html=True)
-
-
-def srow(code) -> dict:
-    return B.row_dict(S.loc[code]) if code in S.index else {"판정": "판단 보류"}
-
-
-# ───────────────────────── 사이드바: 지역 선택 ─────────────────────────
-with st.sidebar:
-    st.header("어디를 볼까요")
-    sidos = ["00"] + sorted(REG["sidocd"].unique(), key=lambda c: list(SIDO_SHORT).index(c))
-    sido = st.selectbox("시도", sidos, format_func=lambda c: "전국" if c == "00" else SIDO_SHORT[c],
-                        key="sido")
-    sgg = "all"
-    if sido != "00":
-        subs = REG[REG["sidocd"] == sido].sort_values("sggcd")
-        opts = ["all"] + subs["sggcd"].tolist()
-        names = dict(zip(subs["sggcd"], subs["sggnm"]))
-        sgg = st.selectbox("시군구", opts, format_func=lambda c: "전체" if c == "all" else names[c],
-                           key="sgg")
-    st.divider()
-    st.header("단지 목록 조건")
-    areas = st.multiselect("평형대 (전용면적)", AREA_LABELS, default=AREA_LABELS)
-    excl_direct = st.checkbox("직거래 제외", value=True,
-                              help="가족 간 증여성 거래 등 시세와 동떨어진 거래가 섞일 수 있음")
-    metric = st.radio("가격 기준", ["평당가 (만원/전용3.3㎡)", "거래금액 (억원)"])
-    st.divider()
-    col = meta.get("수집") or {}
-    st.caption(f"{REF:%Y년 %m월} 기준\n\n{meta['데이터_시작'][:7].replace('-', '년 ')}월부터 "
-               f"{meta['데이터_끝'][:10]}까지 거래 {meta['거래수']:,}건\n\n"
-               f"{meta['생성'][:16].replace('T', ' ')} 갱신. 매일 새벽 자동으로 새 거래를 받습니다.")
-    if col and not col.get("complete", True):
-        st.warning(f"전국 수집 진행 중: {col['cells_done']:,}/{col['cells_total']:,}칸 "
-                   f"({col['cells_done'] / col['cells_total']:.0%}). 빠진 지역·기간은 매일 자동으로 채워집니다.")
-
-level = "전국" if sido == "00" else ("시도" if sgg == "all" else "시군구")
-code = sido if sgg == "all" else sgg
-s = srow(code)
-title = "전국" if level == "전국" else s.get("이름", code)
-parent = srow("00") if level == "시도" else srow(sido) if level == "시군구" else None
-VAL = "평당가" if metric.startswith("평당가") else "거래금액_억"
-UNIT = "만원/3.3㎡" if VAL == "평당가" else "억원"
-
-if level == "전국":
-    children = stats[stats["단계"] == "시도"].copy()
-    child_word = "시도"
-elif level == "시도":
-    children = stats[(stats["단계"] == "시군구") & (stats["상위"] == sido)].copy()
-    children["이름"] = children["코드"].map(REG.set_index("sggcd")["sggnm"])
-    child_word = "시군구"
-else:
-    dong = load_table("dong.parquet", VER)
-    children = dong[dong["시군구코드"] == sgg].rename(
-        columns={"법정동": "이름", "동일단지_1년": "1년"}).copy()
-    children = children[children["거래수_3개월"].fillna(0) >= 3]
-    child_word = "법정동"
-
-# ───────────────────────── 헤더: 방향 신호 ─────────────────────────
-j = s.get("판정", "판단 보류")
-if j == "판단 보류":
-    why = "거래가 적어 방향을 판단하기 어렵습니다."
-else:
-    why = f"최근 3개월 가격지수 {B.p(s.get('3개월'))}, 1년 {B.p(s.get('1년'))}."
-    if s.get("상승비율") is not None:
-        why += f" 1년 전보다 오른 단지가 {s['상승비율']:.0f}%입니다."
-if level == "시군구":
-    hero_parent, hero_name = SIDO_SHORT[sido], REG.set_index("sggcd").at[sgg, "sggnm"]
-else:
-    hero_parent, hero_name = None, title
-UI.hero(hero_name, hero_parent, j, why,
-        f"{REF:%Y년 %m월} 기준. 같은 단지·같은 면적 거래끼리 비교해, 최근 3개월이 직전 3개월보다 "
-        "1% 넘게 오르면 상승, 1% 넘게 내리면 하락으로 봅니다.")
-note = A.drivers(s, parent)
-
-UI.figures([
-    ("3개월", B.p(s.get("3개월")), "가격지수 변동"),
-    ("6개월", B.p(s.get("6개월")), "가격지수 변동"),
-    ("1년", B.p(s.get("1년")), "가격지수 변동"),
-    ("오른 단지", B.p(s.get("상승비율"), 0, False) if s.get("상승비율") is not None else "-",
-     "1년 전보다 오른 단지 비율"),
-    ("거래량", B.p(s.get("거래량증감"), 0), "전년 같은 3개월 대비"),
-    ("신고가", B.p(s.get("신고가비율"), 1, False) if s.get("신고가비율") is not None else "-",
-     "최근 3개월 거래 중 최고가 경신"),
-])
-
-# 하위 지역: 동 표지판
-if len(children) and level != "시군구":
-    items = []
-    for _, r in children.sort_values("1년", ascending=False, na_position="last").iterrows():
-        jj = r.get("판정") if isinstance(r.get("판정"), str) else "판단 보류"
-        ch = r.get("1년")
-        items.append((r["이름"], jj, B.p(ch) if pd.notna(ch) else ""))
-    UI.plates(items, f"{child_word}별 신호. 색은 최근 3개월 판정, 숫자는 1년 변동입니다.")
-
-need_trades = level != "전국"
-trades = None
-if need_trades:
+def data() -> Data | None:
     try:
-        trades = load_trades(sido, VER)
+        return Data()
     except Exception as e:  # noqa: BLE001
-        st.warning(f"이 지역 거래 파일을 아직 받지 못했습니다 ({e}). 수집이 끝나면 표시됩니다.")
-
-tabs = st.tabs(["브리핑", "지도", "가격지수", "순위", "신고가", "예산 맞춤", "단지"])
-
-# ═════════════════════════ 1. 브리핑 ═════════════════════════
-with tabs[0]:
-    UI.section("시장 전체")
-    md_list(B.market_section(s, child_word))
-
-    if len(children):
-        ctab, cnotes = B.children_section(children)
-        if len(ctab):
-            UI.section(f"{child_word}별 차이")
-            show = ctab[["구분", "이름", "1년", "특징"]].rename(columns={"이름": child_word, "1년": "1년 변동"})
-            st.dataframe(show.head(40), hide_index=True, width="stretch", column_config={
-                "1년 변동": st.column_config.NumberColumn(format="%+.1f%%")})
-            if cnotes:
-                md_list(cnotes)
-
-    UI.section("왜 오르고 내리나")
-    if note:
-        md_list(note)
-    else:
-        st.markdown("- 뚜렷한 주도 요인이 보이지 않습니다(연식·면적·지역 간 차이가 작음).")
-    lead = s.get("상승주도") or []
-    if lead:
-        st.markdown("상승 폭이 큰 단지(양쪽 시점 각 2건 이상 거래): " +
-                    ", ".join(f"{x['단지']}({x['지역']}) {B.p(x['변동'])}" for x in lead[:5]))
-    top = s.get("거래상위") or []
-    if top:
-        st.markdown("거래가 가장 많은 대장 단지(최근 12개월): " +
-                    ", ".join(f"{x['단지']}({x['지역']}, {x['거래수']}건"
-                              + (f", 1년 {B.p(x['변동'])}" if x.get("변동") is not None else "") + ")"
-                              for x in top))
-    ext = A.external_factors(s, SIDO_SHORT.get(sido) if level == "시군구" else None)
-    if ext:
-        st.markdown("**수요와 공급 (공공통계)**")
-        md_list(ext)
-        st.caption("출처: 국토교통부 시·군·구별 미분양현황, 주택건설 준공실적(시도) · 국가데이터처 시군구별 이동자수 "
-                   "(KOSIS). '시 전체 값'은 일반구 통계가 없어 시 단위 수치를 보여 준 것입니다.")
-
-    sec = B.age_section(s)
-    if sec:
-        UI.section("신축과 구축")
-        md_list(sec)
-    sec = B.area_section(s)
-    if sec:
-        UI.section("면적별")
-        md_list(sec)
-    sec = B.buyer_section(s)
-    if sec:
-        UI.section("집을 살 때 볼 숫자")
-        md_list(sec)
-    with st.expander("이 자료로 알 수 없는 것"):
-        st.markdown("- 호가·매물 수, 전세가(갭), 동·층·향별 선호, 급매 여부\n"
-                    f"- 수집기간({meta['데이터_시작'][:7]}~) 이전 고점 대비 위치. '전고점'은 이 기간 안의 최고가\n"
-                    "- 미래 가격. 이 자료는 과거 계약 기록입니다.")
-
-# ═════════════════════════ 2. 지도 ═════════════════════════
-with tabs[1]:
-    if level == "시군구":
-        st.info("시군구 안에서는 법정동별 비교표를 보여 줍니다. 단지 지도는 좌표 변환이 끝나면 추가됩니다.")
-        if len(children):
-            fig = px.bar(children.dropna(subset=["1년"]).sort_values("1년"), x="1년", y="이름",
-                         orientation="h", color="1년", color_continuous_scale=UI.DIVERGING,
-                         color_continuous_midpoint=0, labels={"1년": "1년 변동(%)", "이름": ""})
-            fig.update_layout(height=max(300, 22 * len(children)), coloraxis_showscale=False, **CHART)
-            st.plotly_chart(fig, width="stretch")
-    else:
-        mopt = {"1년 변동(%)": "1년", "3개월 변동(%)": "3개월", "상승 단지 비율(%)": "상승비율",
-                "거래량 증감(%)": "거래량증감", "중위 평당가(만원)": "중위평당가"}
-        mname = st.radio("색 기준", list(mopt), horizontal=True)
-        mcol = mopt[mname]
-        sg = stats[stats["단계"] == "시군구"].copy()
-        if level == "시도":
-            sg = sg[sg["상위"] == sido]
-        geo = load_geo()
-        feats = [f for f in geo["features"] if f["id"] in set(sg["코드"])]
-        geo_sub = {"type": "FeatureCollection", "features": feats}
-        sg["판정표시"] = sg["판정"].map(lambda x: f"{B.ARROW.get(x, '')} {x}")
-        diverging = mcol in ("1년", "3개월", "거래량증감")
-        rng = {"1년": 8, "3개월": 3, "거래량증감": 50}.get(mcol)
-        scale = (UI.DIVERGING if diverging else UI.SEQUENTIAL)
-        if diverging:
-            vmin, vmax = -rng, rng
-        else:
-            q = sg[mcol].dropna()
-            vmin, vmax = (q.quantile(0.05), q.quantile(0.95)) if len(q) else (0, 1)
-
-        def _hv(r):
-            f = lambda v, fmt: (fmt.format(v) if pd.notna(v) else "-")  # noqa: E731
-            return (f"<b>{r['이름']}</b> {B.ARROW.get(r['판정'], '')} {r['판정']}<br>"
-                    f"1년 {f(r['1년'], '{:+.1f}%')} · 3개월 {f(r['3개월'], '{:+.1f}%')}<br>"
-                    f"상승 단지 {f(r['상승비율'], '{:.0f}%')} · 거래량 {f(r['거래량증감'], '{:+.0f}%')}<br>"
-                    f"평당 {f(r['중위평당가'], '{:,.0f}만원')} · 최근 3개월 {f(r['거래수_3개월'], '{:,.0f}건')}")
-        fig = MV.choropleth(geo_sub, dict(zip(sg["코드"], sg[mcol])),
-                            {r["코드"]: _hv(r) for _, r in sg.iterrows()}, scale=scale, vmin=vmin,
-                            vmax=vmax, title=mname, height=680 if level == "전국" else 560)
-        st.plotly_chart(fig, width="stretch", config={"scrollZoom": True})
-        st.caption("거래가 적은 지역은 회색(판단 보류)일 수 있습니다. "
-                   "경계: 통계청 SGIS 행정구역(2026.10) · vuski/admdongkor 가공(CC BY 4.0)")
-        rank = sg.dropna(subset=[mcol]).sort_values(mcol, ascending=False)
-        c1, c2 = st.columns(2)
-        cols = ["이름", "판정", "1년", "3개월", "상승비율", "거래량증감", "중위평당가", "거래수_3개월"]
-        cfg = {"1년": st.column_config.NumberColumn("1년", format="%+.1f%%"),
-               "3개월": st.column_config.NumberColumn("3개월", format="%+.1f%%"),
-               "상승비율": st.column_config.NumberColumn("상승 단지", format="%.0f%%"),
-               "거래량증감": st.column_config.NumberColumn("거래량", format="%+.0f%%"),
-               "중위평당가": st.column_config.NumberColumn("평당가(만원)", format="localized"),
-               "거래수_3개월": st.column_config.NumberColumn("거래(3개월)")}
-        c1.markdown(f"**{mname} 상위 15**")
-        c1.dataframe(rank[cols].head(15), hide_index=True, width="stretch", column_config=cfg)
-        c2.markdown(f"**{mname} 하위 15**")
-        c2.dataframe(rank[cols].tail(15).iloc[::-1], hide_index=True, width="stretch", column_config=cfg)
-
-# ═════════════════════════ 3. 지수 추이 ═════════════════════════
-with tabs[2]:
-    UI.section("동일단지 가격지수")
-    st.caption("같은 단지·같은 면적의 가격 변화만 모은 지수입니다. "
-                "(수집 첫 달 = 100, 3개월 이동평균)")
-    lines = [("전국", "00")]
-    if level != "전국":
-        lines.append((SIDO_SHORT[sido], sido))
-    if level == "시군구":
-        lines.append((title, sgg))
-    pick = st.multiselect(f"비교할 {child_word if level != '시군구' else '지역'} 추가",
-                          children["이름"].tolist() if level != "시군구" else [], key="idx_pick")
-    name2code = dict(zip(children["이름"], children.get("코드", children["이름"])))
-    lines += [(n, name2code[n]) for n in pick]
-    rows = []
-    for n, c in lines:
-        x = index[index["코드"] == c].sort_values("계약월")
-        if len(x):
-            rows.append(pd.DataFrame({"계약월": x["계약월"], "지수": x["지수"].rolling(3, min_periods=1).mean(),
-                                      "지역": n}))
-    if rows:
-        d = pd.concat(rows)
-        fig = px.line(d, x="계약월", y="지수", color="지역", labels={"계약월": ""})
-        fig.add_hline(y=100, line_dash="dot", line_color="#adb5bd")
-        fig.update_layout(height=420, hovermode="x unified", **CHART)
-        st.plotly_chart(fig, width="stretch")
-        x = index[index["코드"] == code].sort_values("계약월")
-        if len(x):
-            fig2 = px.bar(x, x="계약월", y="거래수", labels={"계약월": "", "거래수": "거래(건)"})
-            fig2.update_layout(height=200, **CHART)
-            UI.section(f"{title} 월별 거래량")
-            st.caption("마지막 1~2개월은 신고 기한(계약 후 30일) 때문에 적게 잡힙니다.")
-            st.plotly_chart(fig2, width="stretch")
-    else:
-        st.info("거래가 적어 지수를 계산하지 못했습니다.")
-
-
-# ───────────────────────── 상세 탭 공통 ─────────────────────────
-def detail_base():
-    if trades is None:
+        st.markdown("## 데이터를 준비하고 있습니다")
+        st.write("전국 실거래 수집·집계가 끝나면 이 화면에 자동으로 표시됩니다. 잠시 뒤 다시 열어 주세요.")
+        st.caption(f"상세: {type(e).__name__}: {e}")
         return None
-    d = trades[trades["평형대"].isin(areas) & ~trades["해제"] & (trades["계약월"] <= REF)]
-    if excl_direct:
-        d = d[d["거래유형"] != "직거래"]
-    if level == "시군구":
-        d = d[d["시군구코드"] == sgg]
-    return d
 
 
-PCT = st.column_config.NumberColumn(format="%+.1f%%")
-EOK = st.column_config.NumberColumn(format="%.2f억")
-MAN = st.column_config.NumberColumn("평당가(만원)", format="localized")
-DATE = st.column_config.DateColumn(format="YYYY.MM.DD")
-YEAR = st.column_config.NumberColumn(format="%d")
+# ═════════════════════════ 홈 ═════════════════════════
+def home():
+    D = data()
+    if D is None:
+        return
+    s = D.row("00")
+    j = s.get("판정", "판단 보류")
+    word = {"상승": "오르는 중", "하락": "내리는 중", "보합": "숨 고르는 중"}.get(j, "판단 보류")
+    UI.home_hero(f"전국 아파트값,<br>지금은 {word}",
+                 f"{D.ref:%Y년 %m월} 기준, 같은 단지끼리 비교한 가격지수는 최근 3개월 {B.p(s.get('3개월'))}, "
+                 f"1년 {B.p(s.get('1년'))}입니다. 전국 {D.meta['거래수']:,}건의 실거래로 지역마다 "
+                 "오르는지 내리는지, 그리고 왜 그런지를 보여 드립니다.")
+
+    reg = D.reg
+    options = {"전국": "00"} | {SIDO_SHORT[c]: c for c in core.SIDO_ORDER} | dict(zip(reg["지역명"], reg["sggcd"]))
+    c1, _ = st.columns([2, 3])
+    pick = c1.selectbox("어느 지역이 궁금하세요?", list(options), index=None, placeholder="예: 대구 수성구",
+                        key="home_search")
+    if pick:
+        core.set_region(options[pick])
+        st.switch_page(PAGES["region"])
+
+    V.figures(s)
+
+    sg = D.stats[D.stats["단계"] == "시군구"].copy()
+    sg["이름"] = sg["코드"].map(D.reg.set_index("sggcd")["지역명"])  # 표시 이름은 지역 마스터 기준
+    up = sg[sg["판정"] == "상승"].sort_values("3개월", ascending=False).head(12)
+    down = sg[sg["판정"] == "하락"].sort_values("3개월").head(12)
+    a, b = st.columns(2, gap="large")
+    with a:
+        UI.block("지금 오르는 곳", f"최근 3개월 가격지수가 1% 넘게 오른 시군구 {int((sg['판정'] == '상승').sum())}곳 중 "
+                 "상승 폭이 큰 순서입니다.")
+        UI.plates([(r["이름"], "상승", B.p(r["1년"]) if pd.notna(r["1년"]) else "", f"/region?r={r['코드']}")
+                   for _, r in up.iterrows()])
+    with b:
+        UI.block("지금 내리는 곳", f"최근 3개월 가격지수가 1% 넘게 내린 시군구 {int((sg['판정'] == '하락').sum())}곳 중 "
+                 "하락 폭이 큰 순서입니다.")
+        if len(down):
+            UI.plates([(r["이름"], "하락", B.p(r["1년"]) if pd.notna(r["1년"]) else "", f"/region?r={r['코드']}")
+                       for _, r in down.iterrows()])
+        else:
+            st.write("지금 뚜렷하게 내리는 시군구는 없습니다.")
+
+    nat = Ctx(D, "00", "all")
+    UI.block("시도별 한눈에", "색은 최근 3개월 판정, 숫자는 1년 변동입니다. 누르면 그 지역 시세로 갑니다.")
+    V.child_plates(nat, legend=False)
+    UI.block("전국 지도", "시군구마다 같은 단지끼리 비교한 가격 흐름을 색으로 칠했습니다. 마우스를 올리면 숫자가 보입니다.")
+    V.region_map(D, nat, key="home_map", height=640)
+    UI.block("이번 달 시장 이야기", f"{D.ref:%Y년 %m월} 전국 실거래를 읽은 요약입니다.")
+    V.briefing(D, nat, compact=True)
+    V.footer(D)
 
 
-def eok(label):
-    return st.column_config.NumberColumn(label, format="%.2f억")
+# ═════════════════════════ 지역 시세 ═════════════════════════
+def region_page():
+    D = data()
+    if D is None:
+        return
+    sido, sgg = core.region_picker("region")
+    ctx = Ctx(D, sido, sgg)
+    V.region_header(D, ctx)
+    V.child_plates(ctx)
+    t = st.tabs(["브리핑", "지도", "가격지수", "단지 찾기"])
+    with t[0]:
+        V.briefing(D, ctx)
+    with t[1]:
+        V.region_map(D, ctx, key="region_map")
+    with t[2]:
+        V.index_chart(D, ctx)
+    with t[3]:
+        if ctx.level == "전국":
+            st.write("시도나 시군구를 고르면 단지 이름으로 찾아 거래 흐름을 볼 수 있습니다.")
+        else:
+            areas, excl, val = core.detail_filters("cx")
+            base = core.base_trades(D, ctx, areas, excl)
+            if base is not None and len(base):
+                V.complex_detail(D, ctx, base, val)
+    V.footer(D)
 
 
-def name_col(t):
-    return t["단지명"] + " " + t["면적타입"].astype(str) + "㎡"
+# ═════════════════════════ 순위 ═════════════════════════
+def ranking_page():
+    D = data()
+    if D is None:
+        return
+    st.markdown("<div class='k-home' style='padding-bottom:.4rem'><div class='k-head'>순위</div>"
+                "<div class='k-lead'>많이 오른 단지, 많이 내린 단지, 최고가와 신고가를 지역별로 봅니다.</div></div>",
+                unsafe_allow_html=True)
+    sido, sgg = core.region_picker("rank")
+    ctx = Ctx(D, sido, sgg)
+    areas, excl, _ = core.detail_filters("rank")
+    base = core.base_trades(D, ctx, areas, excl)
+    V.rankings(D, ctx, base)
+    UI.block("신고가")
+    V.new_highs(D, ctx, base)
+    V.footer(D)
 
 
-base = detail_base()
-
-# ═════════════════════════ 4. TOP·상승하락 ═════════════════════════
-with tabs[3]:
-    basis = st.radio("상승·하락 비교 시점", ["1년 전", "6개월 전"], horizontal=True)
-    colc = "1년전대비" if basis == "1년 전" else "6개월전대비"
-    refc = "1년전" if basis == "1년 전" else "6개월전"
-    if level == "전국":
-        pc = load_table("nat_risers.parquet", VER)
-        tt = load_table("nat_top_trades.parquet", VER).head(10)
-    elif base is not None:
-        pc = A.price_changes(base, REF)
-        tt = A.top_trades(A.window(base, REF, 0, span=12))
-    else:
-        pc, tt = None, None
-    if pc is not None:
-        pc = pc[(pc["최근_건수"] >= 2) & (pc[f"{refc}_건수"] >= 2)].dropna(subset=[colc]).copy()
-        pc["단지"] = name_col(pc)
-        pc["지역"] = pc["시도코드"].map(SIDO_SHORT) + " " + pc["시군구"] + " " + pc["법정동"]
-        st.caption(f"최근 {A.window_label(REF, 0)} 중위가 vs {basis} 중위가 · 같은 단지·같은 전용면적, "
-                   f"양쪽 시점 각 2건 이상 거래된 {len(pc):,}개 비교")
-        cfg = {"단지": st.column_config.TextColumn(width="medium"), "최근": EOK, refc: EOK,
-               colc: st.column_config.NumberColumn("변동률", format="%+.1f%%"), "건축년도": YEAR}
-        cols = ["순위", "단지", "지역", colc, refc, "최근", "건축년도"]
-        a, b = st.columns(2)
-        for box, ttl, sub in [(a, "많이 오른 단지 20곳", pc[pc[colc] > 0].nlargest(20, colc)),
-                              (b, "많이 내린 단지 20곳", pc[pc[colc] < 0].nsmallest(20, colc))]:
-            with box:
-                UI.section(ttl)
-            if sub.empty:
-                box.info("이 조건에 맞는 단지가 없습니다.")
-                continue
-            sub = sub.assign(순위=range(1, len(sub) + 1))
-            box.dataframe(sub[cols], hide_index=True, width="stretch", column_config=cfg,
-                          height=min(740, 38 + 35 * len(sub)))
-        UI.section("최근 12개월 최고가 거래 10건")
-        st.caption("한 단지에서 가장 비싼 거래 1건씩만 셉니다.")
-        tt = tt.copy()
-        tt["지역"] = tt["시도코드"].map(SIDO_SHORT) + " " + tt["시군구"] + " " + tt["법정동"]
-        tt.insert(0, "순위", range(1, len(tt) + 1))
-        st.dataframe(tt[["순위", "단지명", "지역", "전용면적", "층", "거래금액_억", "평당가", "계약일자"]],
-                     hide_index=True, width="stretch", column_config={
-                         "거래금액_억": eok("거래가"), "평당가": MAN, "계약일자": DATE,
-                         "전용면적": st.column_config.NumberColumn(format="%.1f㎡")})
-        if base is not None:
-            UI.section("평당가가 높은 단지 10곳")
-            st.caption("최근 12개월 거래 3건 이상인 단지만 셉니다.")
-            tc = A.top_complexes(A.window(base, REF, 0, span=12))
-            tc.insert(0, "순위", range(1, len(tc) + 1))
-            st.dataframe(tc[["순위", "단지명", "시군구", "법정동", "건축년도", "거래수", "중위평당가",
-                             "중위거래가", "최고거래가"]], hide_index=True, width="stretch",
-                         column_config={"중위평당가": MAN, "중위거래가": EOK, "최고거래가": EOK,
-                                        "건축년도": YEAR})
-
-# ═════════════════════════ 5. 신고가·전고점 ═════════════════════════
-with tabs[4]:
-    UI.section(f"최근 3개월({A.window_label(REF, 0)}) 신고가")
-    st.caption(
-                "같은 단지·면적의 수집기간 최고가 경신 (이전 거래 2건 이상)")
-    if level == "전국":
-        nh = load_table("nat_new_highs.parquet", VER).copy()
-    elif base is not None:
-        b2 = A.mark_new_highs(base)
-        nh = A.window(b2, REF, 0)
-        nh = nh[nh["신고가"]].copy()
-    else:
-        nh = None
-    if nh is not None and len(nh):
-        nh["경신폭(%)"] = (nh["거래금액"] / nh["직전최고가"] - 1) * 100
-        nh["단지"] = name_col(nh)
-        nh["지역"] = nh["시도코드"].map(SIDO_SHORT) + " " + nh["시군구"] + " " + nh["법정동"]
-        nh["직전최고가_억"], nh["거래가_억"] = nh["직전최고가"] / 1e4, nh["거래금액"] / 1e4
-        cnt = nh.groupby("지역").size().sort_values(ascending=False).head(10)
-        st.caption("신고가가 많은 곳: " + " · ".join(f"{g} {n}건" for g, n in cnt.items()))
-        st.dataframe(nh.sort_values("계약일자", ascending=False)
-                     [["계약일자", "단지", "지역", "층", "직전최고가_억", "거래가_억", "경신폭(%)"]].head(500),
-                     hide_index=True, width="stretch", height=380, column_config={
-                         "계약일자": DATE, "직전최고가_억": eok("직전 최고가"), "거래가_억": eok("거래가"),
-                         "경신폭(%)": PCT, "단지": st.column_config.TextColumn(width="medium")})
-    elif nh is not None:
-        st.info("최근 3개월 신고가 거래가 없습니다.")
+# ═════════════════════════ 예산 맞춤 ═════════════════════════
+def budget_page():
+    D = data()
+    if D is None:
+        return
+    st.markdown("<div class='k-home' style='padding-bottom:.4rem'><div class='k-head'>예산 맞춤</div>"
+                "<div class='k-lead'>가진 돈으로 살 수 있는 단지를 최근 실거래가 기준으로 찾습니다.</div></div>",
+                unsafe_allow_html=True)
+    sido, sgg = core.region_picker("budget", allow_nation=False)
+    ctx = Ctx(D, sido, sgg)
+    areas, excl, _ = core.detail_filters("budget")
+    base = core.base_trades(D, ctx, areas, excl)
     if base is not None:
-        UI.section("최고가 대비 지금 가격")
-        st.caption("수집기간 최고가와 최근 3개월 중위가를 비교합니다.")
-        c1, c2 = st.columns([1, 3])
-        lo_rec = c1.slider("전고점 대비 범위(%)", 50, 110, (50, 90))
-        c2.caption("고점 대비가 낮다고 저평가라는 뜻은 아닙니다. 고점이 일시적 과열이었거나 "
-                   "입지·노후도 요인일 수 있으므로 단지 상세에서 흐름을 함께 확인하세요.")
-        pk = A.peak_recovery(base, REF)
-        pk = pk[pk["고점대비(%)"].between(*lo_rec)].copy()
-        pk["단지"] = name_col(pk)
-        st.dataframe(pk.sort_values("고점대비(%)")
-                     [["단지", "시군구", "법정동", "건축년도", "최고가", "최고가일", "최근중위", "최근건수",
-                       "고점대비(%)"]], hide_index=True, width="stretch", height=420, column_config={
-                         "최고가": EOK, "최근중위": eok("최근 중위"), "최고가일": DATE, "건축년도": YEAR,
-                         "최근건수": st.column_config.NumberColumn("최근 건수"),
-                         "고점대비(%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0,
-                                                                     max_value=110),
-                         "단지": st.column_config.TextColumn(width="medium")})
-    elif level == "전국":
-        st.caption("전고점 대비 목록은 시도를 선택하면 볼 수 있습니다.")
+        V.budget(D, ctx, base)
+    V.footer(D)
 
-# ═════════════════════════ 6. 예산으로 찾기 ═════════════════════════
-with tabs[5]:
-    if base is None:
-        st.info("왼쪽에서 시도를 선택하면 예산에 맞는 단지를 찾을 수 있습니다.")
-    else:
-        c1, c2, c3, c4 = st.columns(4)
-        budget = c1.slider("예산 (억원)", 0.5, 30.0, (3.0, 5.0), step=0.25)
-        sp = c2.select_slider("시세 기준 기간", [3, 6, 12], value=6, format_func=lambda v: f"최근 {v}개월")
-        min_year = c3.number_input("준공 연도 이후", 1970, 2030, 2000, step=5)
-        sort_by = c4.selectbox("정렬", ["1년 상승률 높은 순", "평당가 높은 순", "최근 거래 순",
-                                       "거래 많은 순", "신축 순"])
-        bs = A.budget_search(base, REF, budget[0], budget[1], months=sp)
-        bs = bs[bs["건축년도"].astype(float).fillna(0) >= min_year]
-        key_ = {"평당가 높은 순": "평당가", "1년 상승률 높은 순": "1년전대비", "최근 거래 순": "최근거래일",
-                "거래 많은 순": "거래수", "신축 순": "건축년도"}[sort_by]
-        bs = bs.sort_values(key_, ascending=False, na_position="last")
-        bs["단지"] = name_col(bs)
-        st.caption(f"{budget[0]:.2f}~{budget[1]:.2f}억, {min_year}년 이후 준공 · 후보 {len(bs):,}개(단지·면적)")
-        if not bs.empty and level == "시도":
-            by = bs.groupby("시군구").size().sort_values(ascending=False)
-            fig = px.bar(x=by.index, y=by.values, labels={"x": "", "y": "후보 수"})
-            fig.update_layout(height=200, **CHART)
-            st.plotly_chart(fig, width="stretch")
-        st.dataframe(bs[["단지", "시군구", "법정동", "건축년도", "중위거래가", "최근거래가", "최근거래일",
-                         "거래수", "평당가", "1년전대비"]], hide_index=True, width="stretch", height=480,
-                     column_config={"중위거래가": EOK, "최근거래가": EOK, "최근거래일": DATE, "평당가": MAN,
-                                    "1년전대비": st.column_config.NumberColumn("1년 변동", format="%+.1f%%"),
-                                    "건축년도": YEAR, "단지": st.column_config.TextColumn(width="medium")})
-        st.caption("1년 변동 = 같은 길이 기간의 1년 전 중위가 대비. 취득세·중개보수 등 부대비용 제외. "
-                   "실거래가는 계약 기준이며 호가·급매 여부는 반영되지 않습니다.")
 
-# ═════════════════════════ 7. 단지 상세 ═════════════════════════
-with tabs[6]:
-    if base is None:
-        st.info("왼쪽에서 시도(또는 시군구)를 선택하면 단지를 검색할 수 있습니다.")
-    else:
-        cnt = base.groupby("단지키").agg(단지명=("단지명", "last"), 시군구=("시군구", "last"),
-                                       법정동=("법정동", "last"), n=("단지키", "size"))
-        cnt = cnt.sort_values("n", ascending=False)
-        labels = dict(zip(cnt["단지명"] + " · " + cnt["시군구"] + " " + cnt["법정동"], cnt.index))
-        pick = st.selectbox("단지 검색 (입력해서 찾기)", list(labels), key=f"cx_{code}")
-        cx = base[base["단지키"] == labels[pick]]
-        pcx = A.price_changes(cx, REF)
-        pkx = A.peak_recovery(cx, REF)
-        info = cx.iloc[-1]
-        m = st.columns(4)
-        m[0].metric("준공", f"{int(info['건축년도'])}년" if pd.notna(info["건축년도"]) else "-")
-        m[1].metric("거래 (전체 기간)", f"{len(cx)}건")
-        m[2].metric("1년 변동 (면적별 중위)",
-                    B.p(pcx["1년전대비"].median()) if pcx["1년전대비"].notna().any() else "-")
-        m[3].metric("전고점 대비", f"{pkx['고점대비(%)'].median():.0f}%" if len(pkx) else "-")
-        c1, c2 = st.columns([1.4, 1])
-        with c1:
-            fig = px.scatter(cx, x="계약일자", y=VAL, color="평형대", category_orders={"평형대": AREA_LABELS},
-                             hover_data={"전용면적": ":.1f", "층": True, "거래금액_억": ":.2f"},
-                             labels={VAL: UNIT, "계약일자": ""})
-            g = cx.groupby("계약월")[VAL].median().rolling(3, min_periods=1).mean()
-            fig.add_trace(go.Scatter(x=g.index, y=g.values, mode="lines", name="월 중위",
-                                     line=dict(color="gray", dash="dot")))
-            fig.update_layout(height=340, **CHART)
-            st.plotly_chart(fig, width="stretch")
-        with c2:
-            UI.section("면적별 시세")
-            t = (pcx[["면적타입", "최근", "6개월전", "1년전", "1년전대비"]]
-                 .merge(pkx[["면적타입", "최고가", "고점대비(%)"]], on="면적타입", how="outer")
-                 .sort_values("면적타입"))
-            st.dataframe(t, hide_index=True, width="stretch", column_config={
-                "면적타입": st.column_config.NumberColumn("전용㎡"), "최근": EOK, "6개월전": EOK,
-                "1년전": EOK, "최고가": EOK, "1년전대비": PCT,
-                "고점대비(%)": st.column_config.NumberColumn(format="%.0f%%")})
-            st.caption("최근·6개월전·1년전 = 각 3개월 중위 거래가")
-        UI.section("최근 거래")
-        st.dataframe(cx.sort_values("계약일자", ascending=False)
-                     [["계약일자", "전용면적", "층", "거래금액_억", "평당가", "거래유형"]].head(30),
-                     hide_index=True, width="stretch", column_config={
-                         "계약일자": DATE, "거래금액_억": eok("거래가"), "평당가": MAN,
-                         "전용면적": st.column_config.NumberColumn(format="%.2f㎡")})
+# ═════════════════════════ 안내 ═════════════════════════
+def guide_page():
+    D = data()
+    st.markdown("<div class='k-home' style='padding-bottom:.4rem'><div class='k-head'>안내</div>"
+                "<div class='k-lead'>숫자를 어떻게 만들고 어떻게 읽으면 되는지 정리했습니다.</div></div>",
+                unsafe_allow_html=True)
+    UI.block("상승·보합·하락은 이렇게 정합니다")
+    st.markdown(
+        "- 같은 단지·같은 전용면적 거래끼리만 비교한 **동일단지 가격지수**를 씁니다. 비싼 단지가 많이 팔린 달에 "
+        "평균이 오르는 착시를 걷어 내기 위해서입니다.\n"
+        "- 최근 3개월 평균 지수가 직전 3개월보다 **1% 넘게 오르면 상승, 1% 넘게 내리면 하락**, 그 사이면 보합입니다.\n"
+        "- 거래가 적은 곳은 판단을 보류합니다.")
+    UI.block("숫자 읽는 법")
+    st.markdown(
+        "- **오른 단지**: 1년 전과 비교할 수 있는 단지 중 가격이 오른 비율입니다. 50%보다 높을수록 상승이 넓게 퍼져 있습니다.\n"
+        "- **거래량**: 신고 기한(계약 후 30일) 때문에 마지막 달이 덜 잡혀, 기준월 직전 3개월을 전년 같은 기간과 비교합니다.\n"
+        "- **신고가**: 같은 단지·면적에서 수집기간 최고가를 넘어선 거래입니다.\n"
+        "- **구성 효과**: 중위 평당가와 동일단지 지수가 크게 다르면, 어떤 단지가 많이 팔렸는지가 평균을 움직인 것입니다.")
+    UI.block("이 자료로 알 수 없는 것")
+    st.markdown("- 호가·매물 수, 전세가(갭), 동·층·향별 선호, 급매 여부\n"
+                "- 수집기간(최근 3년) 이전 고점 대비 위치. '최고가'는 이 기간 안의 최고가입니다.\n"
+                "- 미래 가격. 이 자료는 과거 계약 기록입니다.")
+    UI.block("데이터")
+    st.markdown("- 실거래가: 국토교통부 아파트 매매 실거래가 상세 자료(공공데이터포털), 해제 거래 제외, 직거래 기본 제외\n"
+                "- 미분양(시군구)·아파트 준공(시도): 국토교통부, 인구 이동(시군구): 국가데이터처 (KOSIS)\n"
+                "- 행정구역 경계: 통계청 SGIS, vuski/admdongkor 가공(CC BY 4.0). 2026년 7월 행정구역 개편 반영\n"
+                "- 매일 새벽 3시 무렵 새 거래를 받아 다시 계산합니다.")
+    if D is not None:
+        V.footer(D)
 
-st.divider()
-st.caption("출처: 국토교통부 아파트 매매 실거래가(공공데이터포털) · 행정구역 경계: 통계청 SGIS "
-           "(vuski/admdongkor, CC BY 4.0). 평당가 = 거래금액 ÷ 전용면적(평). "
-           "투자 판단의 참고 자료이며 정확성을 보증하지 않습니다.")
+
+PAGES = {
+    "home": st.Page(home, title="홈", url_path="home", default=True),
+    "region": st.Page(region_page, title="지역 시세", url_path="region"),
+    "ranking": st.Page(ranking_page, title="순위", url_path="ranking"),
+    "budget": st.Page(budget_page, title="예산 맞춤", url_path="budget"),
+    "guide": st.Page(guide_page, title="안내", url_path="guide"),
+}
+if LOGO.exists():
+    st.logo(str(LOGO), size="large", link="https://k-apts.streamlit.app")
+st.navigation(list(PAGES.values()), position="top").run()

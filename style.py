@@ -41,13 +41,38 @@ html, body, .stApp, .stApp p, .stApp li, .stApp label, .stApp input, .stApp text
 .stApp {{ background: {WALL}; color: {INK}; }}
 [data-testid="stDecoration"], #MainMenu, footer, [data-testid="stAppDeployButton"] {{ display: none; }}
 [data-testid="stHeader"] {{ background: transparent; }}
-.block-container {{ padding-top: 2.2rem; max-width: 1240px; }}
+.block-container {{ padding-top: 4.6rem; max-width: 1240px; }}
 
 h1, h2, h3, h4 {{ font-family: {DISPLAY}; font-weight: 400; letter-spacing: -0.01em; color: {INK}; }}
 h3 {{ font-size: 1.55rem; margin-top: .4rem; }}
 .stMarkdown p, .stMarkdown li {{ line-height: 1.75; max-width: 46em; }}
 /* 본문 글꼴엔 굵은 체가 없어 강조는 간판 서체로 */
 .stMarkdown b, .stMarkdown strong {{ font-family: {DISPLAY}; font-weight: 400; color: {INK}; letter-spacing: .01em; }}
+
+/* 홈페이지형: 사이드바 없음 */
+/* 넓은 화면은 상단 메뉴만. 휴대폰에선 Streamlit이 메뉴를 사이드 메뉴로 접으므로 살려 둔다 */
+@media (min-width: 641px) {{
+  [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="stExpandSidebarButton"] {{ display: none !important; }}
+}}
+/* 상단 메뉴 */
+[data-testid="stHeader"] {{ background: {WALL}; border-bottom: 1px solid #C9CDC5; }}
+[data-testid="stTopNavLink"] span, [data-testid="stTopNavLink"] p {{ font-size: 1rem; color: {MUTED}; }}
+[data-testid="stTopNavLink"][aria-current="page"] span, [data-testid="stTopNavLink"][aria-current="page"] p {{ color: {INK}; font-weight: 700; }}
+[data-testid="stTopNavLink"][aria-current="page"] {{ box-shadow: inset 0 -3px 0 {GREEN}; border-radius: 0; background: transparent; }}
+
+/* 홈 첫 화면 */
+.k-home {{ padding: 2.4rem 0 1.2rem; }}
+.k-home .k-head {{ font-family: {DISPLAY}; font-size: clamp(2.8rem, 7.2vw, 5.6rem); line-height: 1.04;
+  letter-spacing: -0.03em; color: {INK}; }}
+.k-home .k-lead {{ font-size: 1.15rem; color: {MUTED}; margin-top: 1rem; max-width: 34em; line-height: 1.7; }}
+.k-block {{ border-top: 2px solid {INK}; margin-top: 3rem; padding-top: .9rem; }}
+.stApp .k-block-title {{ font-family: {DISPLAY}; font-size: clamp(1.6rem, 3vw, 2.2rem); margin-bottom: .3rem; }}
+.k-block-sub {{ color: {MUTED}; font-size: .98rem; margin-bottom: .8rem; }}
+
+/* 바닥글 */
+.k-footer {{ margin-top: 4rem; padding: 2rem 0 1rem; border-top: 8px solid {GREEN}; color: {MUTED}; font-size: .9rem; }}
+.stApp .k-footer .k-brand {{ font-family: {DISPLAY}; font-size: 1.6rem; color: {INK}; margin-bottom: .4rem; }}
+.k-footer p {{ max-width: 52em; line-height: 1.7; margin: .2rem 0; }}
 
 /* 사이드바: 콘크리트 벽 */
 [data-testid="stSidebar"] {{ background: {CONCRETE}; border-right: 1px solid #C9CDC5; }}
@@ -98,8 +123,9 @@ h3 {{ font-size: 1.55rem; margin-top: .4rem; }}
 .k-plates {{ display: flex; flex-wrap: wrap; gap: .5rem; margin: .4rem 0 1.4rem; }}
 .k-plate {{
   display: flex; align-items: stretch; background: #fff; border: 1.5px solid {INK};
-  min-width: 7.2rem;
+  min-width: 7.2rem; color: {INK} !important; text-decoration: none !important;
 }}
+a.k-plate:hover {{ background: {CONCRETE}; }}
 .k-plate .k-bar {{ width: .55rem; }}
 .k-plate .k-txt {{ padding: .3rem .6rem .35rem; line-height: 1.15; }}
 .k-plate .k-nm {{ font-family: {DISPLAY}; font-size: 1.05rem; }}
@@ -150,13 +176,17 @@ def hero(name: str, parent: str | None, verdict: str, why: str, foot: str):
         f"<div class='k-foot'>{foot}</div></div>", unsafe_allow_html=True)
 
 
-def plates(items, legend: str):
-    """items: [(이름, 판정, 1년 변동 문자열)]"""
-    html = "".join(
-        f"<div class='k-plate'><div class='k-bar' style='background:{VERDICT.get(v, FLAT)}'></div>"
-        f"<div class='k-txt'><div class='k-nm'>{n}</div><div class='k-val'>{ARROW.get(v, '')} {v}"
-        f"{(', 1년 ' + c) if c else ''}</div></div></div>" for n, v, c in items)
-    st.markdown(f"<div class='k-legend'>{legend}</div><div class='k-plates'>{html}</div>",
+def plates(items, legend: str = ""):
+    """items: [(이름, 판정, 1년 변동 문자열, 링크 또는 None)]"""
+    def one(n, v, c, href=None):
+        inner = (f"<div class='k-bar' style='background:{VERDICT.get(v, FLAT)}'></div>"
+                 f"<div class='k-txt'><div class='k-nm'>{n}</div><div class='k-val'>{ARROW.get(v, '')} {v}"
+                 f"{(', 1년 ' + c) if c else ''}</div></div>")
+        return (f"<a class='k-plate' href='{href}' target='_self'>{inner}</a>" if href
+                else f"<div class='k-plate'>{inner}</div>")
+    html = "".join(one(*it) for it in items)
+    leg = f"<div class='k-legend'>{legend}</div>" if legend else ""
+    st.markdown(f"{leg}<div class='k-plates'>{html}</div>",
                 unsafe_allow_html=True)
 
 
@@ -169,3 +199,15 @@ def figures(items):
 
 def section(title: str):
     st.markdown(f"<div class='k-sec'>{title}</div>", unsafe_allow_html=True)
+
+
+def home_hero(headline: str, lead: str):
+    st.markdown(f"<div class='k-home'><div class='k-head'>{headline}</div><div class='k-lead'>{lead}</div></div>",
+                unsafe_allow_html=True)
+
+
+def block(title: str, sub: str = ""):
+    """홈페이지 구획: 굵은 윗선 + 큰 제목."""
+    sub_html = f"<div class='k-block-sub'>{sub}</div>" if sub else ""
+    st.markdown(f"<div class='k-block'><div class='k-block-title'>{title}</div>{sub_html}</div>",
+                unsafe_allow_html=True)

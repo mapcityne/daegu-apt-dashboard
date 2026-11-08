@@ -76,6 +76,6 @@ def choropleth(geo: dict, values: dict, hover: dict, *, scale, vmin, vmax, title
                                          showscale=True, colorbar=dict(title=title, thickness=12))))
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1.24)  # 위도 36° 부근 왜곡 보정
-    fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="white",
+    fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
                       hoverlabel=dict(bgcolor="white"), dragmode="pan")
     return fig

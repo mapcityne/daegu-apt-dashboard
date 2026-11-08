@@ -60,6 +60,8 @@ PROBE = {"광주전남": ("12210", [c for c in LEGACY_RENAME if c[:2] in ("29", 
 def regions() -> pd.DataFrame:
     """sggcd, sggnm, sidocd, sidonm, lat, lon, 시도(짧은 이름), 지역명(표시용)."""
     r = pd.read_csv(REGIONS_CSV, dtype={"sggcd": str, "sidocd": str})
+    # '화성시동탄구' → '화성시 동탄구' (일반구가 있는 시)
+    r["sggnm"] = r["sggnm"].str.replace(r"^(.+?시)(.+구)$", r"\1 \2", regex=True)
     r["시도"] = r["sidocd"].map(SIDO_SHORT)
     r["지역명"] = r["시도"] + " " + r["sggnm"]
     return r

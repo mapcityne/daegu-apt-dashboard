@@ -1,6 +1,5 @@
-PublicDataReader>=1.1.1
+# 웹 앱(Streamlit Community Cloud)용. 수집 도구는 requirements-collect.txt
 pandas>=2.2
-requests
 streamlit>=1.40
 streamlit-folium>=0.22
 folium>=0.17

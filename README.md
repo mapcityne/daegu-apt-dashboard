@@ -24,7 +24,7 @@
 3. `.env.example`을 `.env`로 복사하고 두 키 입력
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-collect.txt
 ```
 
 ## 실행 순서

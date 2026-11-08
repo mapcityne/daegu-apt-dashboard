@@ -1,0 +1,4 @@
+# 데이터 수집·좌표 변환용 (GitHub Actions, 로컬)
+-r requirements.txt
+PublicDataReader>=1.1.1
+requests

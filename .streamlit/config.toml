@@ -1,0 +1,11 @@
+# 아파트 외벽 슈퍼그래픽 테마 (style.py와 같은 색)
+[theme]
+base = "light"
+primaryColor = "#2E5E4E"
+backgroundColor = "#F2F3EF"
+secondaryBackgroundColor = "#E3E6E0"
+textColor = "#1E2422"
+font = "sans-serif"
+
+[client]
+toolbarMode = "minimal"

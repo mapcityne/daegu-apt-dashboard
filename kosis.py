@@ -105,7 +105,12 @@ def unsold(key, months):
            .groupby(["코드", "월"], as_index=False).agg(미분양=("미분양", "max"), 시단위=("시단위", "max")))
     if miss:
         log(f"  미분양 지역명 미대응 {len(miss)}개(개편 전 이름 등): {sorted(miss)[:15]}")
-    return pd.concat([sgg, sido_totals(sido_rows, "미분양")], ignore_index=True)
+    sido = sido_totals(sido_rows, "미분양")
+    if not (sido["코드"] == "00").any():  # 전국 행이 없으면 시도 합계로
+        nat = sido[sido["코드"].str.len() == 2].groupby("월", as_index=False)["미분양"].sum()
+        sido = pd.concat([sido, nat.assign(코드="00", 시단위=False)], ignore_index=True)
+        log("  미분양 전국값: 시도 합계로 계산")
+    return pd.concat([sgg, sido], ignore_index=True)
 
 
 def sido_totals(rows, col):

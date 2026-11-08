@@ -428,12 +428,12 @@ def external_factors(s: dict, scope_sido: str | None = None) -> list[str]:
         else:
             out.append(f"미분양 {u:,.0f}호({s['미분양_기준월']}){tail}.")
     n, n0, inflow = s.get("순이동_12개월"), s.get("순이동_전년12개월"), s.get("전입_12개월")
-    if n is not None and inflow:
+    if n is not None and inflow and s.get("단계") != "전국":  # 전국 순이동은 정의상 0
         rate = n / inflow * 100
         tail = " (시 전체 값)" if s.get("인구_시단위") else ""
-        if rate >= 3:
+        if rate >= 1:
             out.append(f"**인구 순유입**: 최근 12개월 {n:+,.0f}명{tail}. 전입이 전출보다 많아 실수요를 받칩니다.")
-        elif rate <= -3:
+        elif rate <= -1:
             out.append(f"**인구 순유출**: 최근 12개월 {n:+,.0f}명{tail}. 실수요 기반이 약해지는 요인입니다.")
         else:
             out.append(f"인구 이동은 균형에 가깝습니다(최근 12개월 순이동 {n:+,.0f}명{tail}).")
@@ -441,10 +441,10 @@ def external_factors(s: dict, scope_sido: str | None = None) -> list[str]:
     if c is not None and c0:
         ch = (c / c0 - 1) * 100
         where = f"{scope_sido} 전체 " if scope_sido else ""
-        if ch >= 30:
+        if ch >= 15:
             out.append(f"**입주 물량 증가**: {where}아파트 준공 최근 12개월 {c:,.0f}호(전년 대비 {ch:+.0f}%). "
                        "새 아파트 입주가 몰리면 매물·전세 공급이 늘어 가격에 부담입니다.")
-        elif ch <= -30:
+        elif ch <= -15:
             out.append(f"**입주 물량 감소**: {where}아파트 준공 최근 12개월 {c:,.0f}호(전년 대비 {ch:+.0f}%). "
                        "공급 공백은 가격을 받치는 요인입니다.")
         else:

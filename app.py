@@ -49,18 +49,19 @@ def _read(name: str) -> bytes:
     raise last
 
 
-@st.cache_data(ttl=3 * 3600, show_spinner="데이터 불러오는 중…")
-def load_table(name: str) -> pd.DataFrame:
-    return pd.read_parquet(io.BytesIO(_read(name)))
-
-
-@st.cache_data(ttl=3 * 3600)
+@st.cache_data(ttl=600)
 def load_meta() -> dict:
+    """10분마다 확인. '생성' 시각이 바뀌면 아래 표들도 새로 받는다."""
     return json.loads(_read("meta.json"))
 
 
-@st.cache_data(ttl=3 * 3600, show_spinner="지역 거래 불러오는 중…")
-def load_trades(sido: str) -> pd.DataFrame:
+@st.cache_data(ttl=24 * 3600, show_spinner="데이터 불러오는 중…", max_entries=20)
+def load_table(name: str, version: str = "") -> pd.DataFrame:
+    return pd.read_parquet(io.BytesIO(_read(name)))
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner="지역 거래 불러오는 중…", max_entries=4)
+def load_trades(sido: str, version: str = "") -> pd.DataFrame:
     df = pd.read_parquet(io.BytesIO(_read(f"trades_{sido}.parquet")))
     df = A.prepare(enrich(df))
     df["평형대"] = pd.Categorical(df["평형대"], categories=AREA_LABELS, ordered=True)
@@ -74,8 +75,9 @@ def load_geo() -> dict:
 
 try:
     meta = load_meta()
-    stats = load_table("stats.parquet")
-    index = load_table("index.parquet")
+    VER = meta.get("생성", "")
+    stats = load_table("stats.parquet", VER)
+    index = load_table("index.parquet", VER)
 except Exception as e:  # noqa: BLE001
     st.title("아파트 실거래가 시장 신호")
     st.info("📦 전국 데이터를 처음 수집하고 있습니다. 수집·집계가 끝나면(보통 1~2시간, 한도에 걸리면 "
@@ -145,7 +147,7 @@ elif level == "시도":
     children["이름"] = children["코드"].map(REG.set_index("sggcd")["sggnm"])
     child_word = "시군구"
 else:
-    dong = load_table("dong.parquet")
+    dong = load_table("dong.parquet", VER)
     children = dong[dong["시군구코드"] == sgg].rename(
         columns={"법정동": "이름", "동일단지_1년": "1년"}).copy()
     children = children[children["거래수_3개월"].fillna(0) >= 3]
@@ -193,7 +195,7 @@ need_trades = level != "전국"
 trades = None
 if need_trades:
     try:
-        trades = load_trades(sido)
+        trades = load_trades(sido, VER)
     except Exception as e:  # noqa: BLE001
         st.warning(f"이 지역 거래 파일을 아직 받지 못했습니다 ({e}). 수집이 끝나면 표시됩니다.")
 
@@ -382,8 +384,8 @@ with tabs[3]:
     colc = "1년전대비" if basis == "1년 전" else "6개월전대비"
     refc = "1년전" if basis == "1년 전" else "6개월전"
     if level == "전국":
-        pc = load_table("nat_risers.parquet")
-        tt = load_table("nat_top_trades.parquet").head(10)
+        pc = load_table("nat_risers.parquet", VER)
+        tt = load_table("nat_top_trades.parquet", VER).head(10)
     elif base is not None:
         pc = A.price_changes(base, REF)
         tt = A.top_trades(A.window(base, REF, 0, span=12))
@@ -430,7 +432,7 @@ with tabs[4]:
     st.markdown(f"**최근 3개월({A.window_label(REF, 0)}) 신고가 거래** — "
                 "같은 단지·면적의 수집기간 최고가 경신 (이전 거래 2건 이상)")
     if level == "전국":
-        nh = load_table("nat_new_highs.parquet").copy()
+        nh = load_table("nat_new_highs.parquet", VER).copy()
     elif base is not None:
         b2 = A.mark_new_highs(base)
         nh = A.window(b2, REF, 0)

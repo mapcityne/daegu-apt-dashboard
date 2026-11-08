@@ -64,7 +64,11 @@ try:
     stats = load_table("stats.parquet")
     index = load_table("index.parquet")
 except Exception as e:  # noqa: BLE001
-    st.error(f"데이터를 불러오지 못했습니다: {e}")
+    st.title("아파트 실거래가 시장 신호")
+    st.info("📦 전국 데이터를 처음 수집하고 있습니다. 수집·집계가 끝나면(보통 1~2시간, 한도에 걸리면 "
+            "다음 날까지) 이 화면에 자동으로 표시됩니다.\n\n"
+            "진행 상황: GitHub 저장소 Actions 탭의 `update-data` 실행 기록")
+    st.caption(f"상세: {type(e).__name__}: {e}")
     st.stop()
 
 REF = pd.Timestamp(meta["기준월"] + "-01")

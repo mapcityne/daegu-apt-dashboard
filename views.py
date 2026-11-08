@@ -24,11 +24,11 @@ def region_header(D: Data, ctx: Ctx):
             why += f" 1년 전보다 오른 단지가 {s['상승비율']:.0f}%입니다."
     UI.hero(ctx.name, ctx.parent_name, j, why,
             f"{D.ref:%Y년 %m월} 기준. 같은 단지·같은 면적 거래끼리 비교해, 최근 3개월이 직전 3개월보다 "
-            "1% 넘게 오르면 상승, 1% 넘게 내리면 하락으로 봅니다.")
+            "1% 넘게 오르면 상승, 1% 넘게 내리면 하락으로 봅니다.", value=s.get("3개월"))
     figures(s)
 
 
-def figures(s):
+def figures(s, solo=False):
     UI.figures([
         ("3개월", B.p(s.get("3개월")), "가격지수 변동"),
         ("6개월", B.p(s.get("6개월")), "가격지수 변동"),
@@ -38,18 +38,18 @@ def figures(s):
         ("거래량", B.p(s.get("거래량증감"), 0), "전년 같은 3개월 대비"),
         ("신고가", B.p(s.get("신고가비율"), 1, False) if s.get("신고가비율") is not None else "-",
          "최근 3개월 거래 중 최고가 경신"),
-    ])
+    ], solo=solo)
 
 
 def child_plates(ctx: Ctx, link_page="region", legend=True):
     if not len(ctx.children) or ctx.level == "시군구":
         return
     items = []
-    for _, r in ctx.children.sort_values("1년", ascending=False, na_position="last").iterrows():
+    for _, r in ctx.children.sort_values("3개월", ascending=False, na_position="last").iterrows():
         jj = r.get("판정") if isinstance(r.get("판정"), str) else "판단 보류"
-        ch = r.get("1년")
+        ch = r.get("3개월")
         items.append((r["이름"], jj, B.p(ch) if pd.notna(ch) else "", f"/{link_page}?r={r['코드']}"))
-    UI.plates(items, f"{ctx.child_word}별 신호. 색은 최근 3개월 판정, 숫자는 1년 변동입니다. 누르면 그 지역으로 갑니다."
+    UI.plates(items, f"{ctx.child_word}별 신호. 색은 판정, 숫자는 최근 3개월 가격지수 변동입니다. 누르면 그 지역으로 갑니다."
               if legend else "")
 
 

@@ -1,10 +1,10 @@
-# 아파트 외벽 슈퍼그래픽 테마 (style.py와 같은 색)
+# 시세 리서치 리포트 테마 (style.py와 같은 색)
 [theme]
 base = "light"
-primaryColor = "#2E5E4E"
-backgroundColor = "#F2F3EF"
-secondaryBackgroundColor = "#E3E6E0"
-textColor = "#1E2422"
+primaryColor = "#1B3A5B"
+backgroundColor = "#EEF1F4"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#14202E"
 font = "sans-serif"
 
 [client]

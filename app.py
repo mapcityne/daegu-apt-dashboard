@@ -42,7 +42,7 @@ def home():
     UI.home_hero(f"전국 아파트값,<br>지금은 {word}",
                  f"{D.ref:%Y년 %m월} 기준, 같은 단지끼리 비교한 가격지수는 최근 3개월 {B.p(s.get('3개월'))}, "
                  f"1년 {B.p(s.get('1년'))}입니다. 전국 {D.meta['거래수']:,}건의 실거래로 지역마다 "
-                 "오르는지 내리는지, 그리고 왜 그런지를 보여 드립니다.")
+                 "오르는지 내리는지, 그리고 왜 그런지를 보여 드립니다.", value=s.get("3개월"))
 
     reg = D.reg
     options = {"전국": "00"} | {SIDO_SHORT[c]: c for c in core.SIDO_ORDER} | dict(zip(reg["지역명"], reg["sggcd"]))
@@ -53,7 +53,7 @@ def home():
         core.set_region(options[pick])
         st.switch_page(PAGES["region"])
 
-    V.figures(s)
+    V.figures(s, solo=True)
 
     sg = D.stats[D.stats["단계"] == "시군구"].copy()
     sg["이름"] = sg["코드"].map(D.reg.set_index("sggcd")["지역명"])  # 표시 이름은 지역 마스터 기준
@@ -63,19 +63,19 @@ def home():
     with a:
         UI.block("지금 오르는 곳", f"최근 3개월 가격지수가 1% 넘게 오른 시군구 {int((sg['판정'] == '상승').sum())}곳 중 "
                  "상승 폭이 큰 순서입니다.")
-        UI.plates([(r["이름"], "상승", B.p(r["1년"]) if pd.notna(r["1년"]) else "", f"/region?r={r['코드']}")
+        UI.plates([(r["이름"], "상승", B.p(r["3개월"]) if pd.notna(r["3개월"]) else "", f"/region?r={r['코드']}")
                    for _, r in up.iterrows()])
     with b:
         UI.block("지금 내리는 곳", f"최근 3개월 가격지수가 1% 넘게 내린 시군구 {int((sg['판정'] == '하락').sum())}곳 중 "
                  "하락 폭이 큰 순서입니다.")
         if len(down):
-            UI.plates([(r["이름"], "하락", B.p(r["1년"]) if pd.notna(r["1년"]) else "", f"/region?r={r['코드']}")
+            UI.plates([(r["이름"], "하락", B.p(r["3개월"]) if pd.notna(r["3개월"]) else "", f"/region?r={r['코드']}")
                        for _, r in down.iterrows()])
         else:
             st.write("지금 뚜렷하게 내리는 시군구는 없습니다.")
 
     nat = Ctx(D, "00", "all")
-    UI.block("시도별 한눈에", "색은 최근 3개월 판정, 숫자는 1년 변동입니다. 누르면 그 지역 시세로 갑니다.")
+    UI.block("시도별 한눈에", "색은 판정, 숫자는 최근 3개월 가격지수 변동입니다. 누르면 그 지역 시세로 갑니다.")
     V.child_plates(nat, legend=False)
     UI.block("전국 지도", "시군구마다 같은 단지끼리 비교한 가격 흐름을 색으로 칠했습니다. 마우스를 올리면 숫자가 보입니다.")
     V.region_map(D, nat, key="home_map", height=640)

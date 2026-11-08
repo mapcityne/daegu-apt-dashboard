@@ -76,7 +76,17 @@ def code_children():
 
 
 def unsold(key, months):
-    df = fetch(key, "116", "DT_MLTM_2082", "13103871087T1", months, objL1="ALL", objL2="ALL")
+    # 한 번에 4만 칸 제한 → 시도(구분 19개)별로 나눠 요청
+    parts = []
+    for i in range(1, 20):
+        try:
+            parts.append(fetch(key, "116", "DT_MLTM_2082", "13103871087T1", months,
+                               objL1=f"13102871087A.{i:04d}", objL2="ALL"))
+        except RuntimeError as e:
+            if "30" not in str(e):  # 30 = 데이터 없음(예: 통합 전/후 시도) → 건너뜀
+                raise
+        time.sleep(1.5)
+    df = pd.concat(parts, ignore_index=True)
     idx = name_index()
     rows, sido_rows, miss = [], [], set()
     for r in df.itertuples():

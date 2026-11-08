@@ -1,8 +1,7 @@
 # 웹 앱(Streamlit Community Cloud)용. 수집 도구는 requirements-collect.txt
 pandas>=2.2
+pyarrow>=15
 streamlit>=1.40
-streamlit-folium>=0.22
+plotly>=5.20
 folium>=0.17
 branca
-plotly>=5.20
-matplotlib

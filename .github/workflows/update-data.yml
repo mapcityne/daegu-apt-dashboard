@@ -1,19 +1,27 @@
-# 매월 실거래가 수집 → 좌표 변환 → data/*.csv 커밋
-# 저장소 Settings > Secrets and variables > Actions 에 DATA_GO_KR_KEY, KAKAO_REST_KEY 등록 필요
+# 매일 전국 실거래가 수집 → 집계 → GitHub Release 'data'에 업로드 (앱이 여기서 읽음)
+# 필요한 Secrets: DATA_GO_KR_KEY (공공데이터포털, 국토교통부 아파트 매매 실거래가 상세 자료)
 name: update-data
 
 on:
   schedule:
-    - cron: "17 21 1,15 * *"   # 매월 2일·16일 06:17 (KST)
-  workflow_dispatch:            # Actions 탭에서 수동 실행
+    - cron: "17 18 * * *"   # 매일 03:17 (KST)
+  workflow_dispatch:
+    inputs:
+      budget:
+        description: "수집 시간 예산(분)"
+        default: "280"
 
 permissions:
   contents: write
 
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -21,20 +29,34 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements-collect.txt
+
+      # 수집 캐시(시군구×월 파일)는 실행 간에 이어 쓴다
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+
       - name: 실거래가 수집
+        continue-on-error: true   # 한도·시간 초과로 멈춰도 받은 만큼 집계한다
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
-        run: python -u collect.py --months 36
-      - name: 단지 좌표 변환
+        run: python -u collect.py --workers 4 --budget-minutes ${{ github.event.inputs.budget || '280' }}
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+
+      - name: 집계
+        run: python -u build.py
+
+      - name: 릴리스 업로드
         env:
-          KAKAO_REST_KEY: ${{ secrets.KAKAO_REST_KEY }}
-        run: python -u geocode.py
-      - name: 변경분 커밋
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/daegu_apt_trades.csv data/complex_coords.csv
-          git diff --cached --quiet && exit 0
-          git commit -m "data: 실거래가 갱신 $(date +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push
+          gh release view data >/dev/null 2>&1 || \
+            gh release create data --title "데이터 (자동 갱신)" --latest=false \
+              --notes "앱이 읽는 최신 집계 데이터. 매일 GitHub Actions가 덮어씁니다."
+          gh release upload data data/out/* --clobber

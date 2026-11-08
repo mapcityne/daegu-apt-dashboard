@@ -37,3 +37,45 @@ def build_map(on_map: pd.DataFrame) -> folium.Map:
     if len(on_map) > 1:
         m.fit_bounds([[on_map.lat.min(), on_map.lon.min()], [on_map.lat.max(), on_map.lon.max()]])
     return m
+
+
+# ───────────────────────── 시군구 색지도 (외부 지도 서버 없이 그림) ─────────────────────────
+def _rings(geom):
+    polys = geom["coordinates"] if geom["type"] == "MultiPolygon" else [geom["coordinates"]]
+    xs, ys = [], []
+    for poly in polys:
+        ring = poly[0]  # 외곽선만
+        xs += [p[0] for p in ring] + [None]
+        ys += [p[1] for p in ring] + [None]
+    return xs, ys
+
+
+def choropleth(geo: dict, values: dict, hover: dict, *, scale, vmin, vmax, title="",
+               height=640):
+    """geo: GeoJSON, values: {코드: 값}, hover: {코드: 문자열}. plotly Figure 반환."""
+    import plotly.colors as pc
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    for f in geo["features"]:
+        code = f["id"]
+        v = values.get(code)
+        if v is None or v != v:
+            color = "#e9ecef"
+        else:
+            t = 0.0 if vmax == vmin else min(max((v - vmin) / (vmax - vmin), 0), 1)
+            color = pc.sample_colorscale(scale, [t])[0]
+        xs, ys = _rings(f["geometry"])
+        fig.add_trace(go.Scatter(x=xs, y=ys, fill="toself", fillcolor=color, mode="lines",
+                                 line=dict(color="white", width=0.6), hoverinfo="text",
+                                 text=hover.get(code, f["properties"].get("name", code)),
+                                 hoveron="fills", showlegend=False))
+    # 색 막대
+    fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers", showlegend=False, hoverinfo="skip",
+                             marker=dict(colorscale=scale, cmin=vmin, cmax=vmax, color=[vmin],
+                                         showscale=True, colorbar=dict(title=title, thickness=12))))
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False, scaleanchor="x", scaleratio=1.24)  # 위도 36° 부근 왜곡 보정
+    fig.update_layout(height=height, margin=dict(l=0, r=0, t=10, b=0), plot_bgcolor="white",
+                      hoverlabel=dict(bgcolor="white"), dragmode="pan")
+    return fig

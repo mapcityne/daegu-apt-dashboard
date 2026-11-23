@@ -25,7 +25,8 @@ def conf(name: str, getter=None) -> str:
 def adsense_head(client: str) -> str:
     if not re.fullmatch(r"ca-pub-\d{10,20}", client):
         return ""
-    return (f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={client}" '
+    return (f'<meta name="google-adsense-account" content="{client}">\n'
+            f'<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={client}" '
             'crossorigin="anonymous"></script>')
 
 

@@ -5,6 +5,7 @@
 ## 현재 상태 (2026-11-23)
 - 정적 사이트: https://k-apts.co.kr (GitHub Pages, site_build.py → site.yml, 매일 데이터 갱신 뒤 재생성)
 - 대화형 앱: https://k-apts.streamlit.app (app.py)
+- 검색: Google Search Console 도메인 속성(sc-domain:k-apts.co.kr) 확인 완료, sitemap.xml 제출(2026-11-23, 첫 가져오기 대기)
 - 광고: 애드센스 자동 광고(ca-pub-8757916015453605, 사이트 승인 심사 전), 애드핏 미설정, 쿠팡 파트너스 다이나믹 배너(id 1056050, AF1756646) — 시군구·시도·첫 화면 하단
 - 페이지: 전국 1 + 시도 16 + 시군구 256 + 기준 안내·개인정보처리방침
 

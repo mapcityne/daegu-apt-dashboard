@@ -339,7 +339,28 @@ def complex_detail(D: Data, ctx: Ctx, base, VAL):
 
 
 # ───────────────────────── 바닥글 ─────────────────────────
+def _secret(k):
+    try:
+        return st.secrets.get(k)
+    except Exception:  # noqa: BLE001  (secrets 파일이 없을 때)
+        return None
+
+
+def coupang_banner():
+    """쿠팡 파트너스 다이나믹 배너. Secrets에 COUPANG_ID·COUPANG_TRACKING이 있을 때만."""
+    import streamlit.components.v1 as components
+    import ads
+    s = ads.coupang_script(ads.conf("COUPANG_ID", _secret), ads.conf("COUPANG_TRACKING", _secret),
+                           ads.conf("COUPANG_TEMPLATE", _secret))
+    if not s:
+        return
+    st.markdown(f"<div class='k-legend' style='margin-top:2.4rem'>{ads.COUPANG_NOTICE}</div>",
+                unsafe_allow_html=True)
+    components.html(f"<div style='overflow-x:auto'>{s}</div>", height=150)
+
+
 def footer(D: Data):
+    coupang_banner()
     m = D.meta
     st.markdown(
         f"<div class='k-footer'><div class='k-brand'>k-apts</div>"

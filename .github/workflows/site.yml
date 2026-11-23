@@ -1,0 +1,62 @@
+# 정적 사이트(광고 게재용) 생성 → GitHub Pages
+# 데이터 갱신(update-data)이 끝나면, 또는 코드가 바뀌면 다시 만든다.
+# 광고 설정: 저장소 Settings > Secrets and variables > Actions > Variables
+#   ADSENSE_CLIENT, ADFIT_UNIT_PC, ADFIT_UNIT_MO, COUPANG_ID, COUPANG_TRACKING, (선택) COUPANG_TEMPLATE
+#   SITE_DOMAIN (예: k-apts.kr, 도메인 연결 후), SITE_URL (예: https://k-apts.kr)
+name: site
+
+on:
+  workflow_run:
+    workflows: [update-data]
+    types: [completed]
+  push:
+    branches: [main]
+    paths: ["site_build.py", "site_assets/**", "ads.py", "briefing.py", "analysis.py", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          path: data/out
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-collect.txt
+      - name: 사이트 생성
+        env:
+          ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}
+          ADFIT_UNIT_PC: ${{ vars.ADFIT_UNIT_PC }}
+          ADFIT_UNIT_MO: ${{ vars.ADFIT_UNIT_MO }}
+          COUPANG_ID: ${{ vars.COUPANG_ID }}
+          COUPANG_TRACKING: ${{ vars.COUPANG_TRACKING }}
+          COUPANG_TEMPLATE: ${{ vars.COUPANG_TEMPLATE }}
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://mapcityne.github.io/daegu-apt-dashboard' }}
+        run: python -u site_build.py --out site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.d.outputs.page_url }}
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

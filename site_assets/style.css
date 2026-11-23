@@ -1,0 +1,97 @@
+/* k-apts 정적 사이트: 시세 리서치 리포트 테마 (style.py와 같은 색) */
+:root {
+  --page: #EEF1F4; --paper: #FFFFFF; --ink: #14202E; --muted: #5B6675; --rule: #D5DBE2;
+  --navy: #1B3A5B; --rise: #C8372D; --fall: #2160B8; --flat: #8C96A3;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--page); color: var(--ink); font-variant-numeric: tabular-nums;
+  font: 16px/1.7 'IBM Plex Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+a { color: var(--navy); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+main.wrap { padding-bottom: 2rem; }
+
+.top { background: var(--paper); border-bottom: 1px solid var(--rule); position: sticky; top: 0; z-index: 5; }
+.top .wrap { display: flex; align-items: center; gap: 1.6rem; height: 56px; }
+.logo img { display: block; height: 30px; width: auto; }
+.menu { display: flex; gap: 1.1rem; overflow-x: auto; white-space: nowrap; font-size: .95rem; }
+.menu a { color: var(--muted); text-decoration: none; font-weight: 500; }
+.menu a:hover { color: var(--navy); }
+.menu .app { color: var(--navy); font-weight: 700; }
+
+.crumb { font-size: .85rem; color: var(--muted); margin: 1.2rem 0 .6rem; }
+.crumb a { color: var(--muted); }
+
+h1 { font-size: clamp(1.7rem, 4vw, 2.6rem); line-height: 1.2; letter-spacing: -0.03em; margin: 0; }
+h2 { font-size: 1.3rem; letter-spacing: -0.02em; margin: 2.6rem 0 .3rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+h3 { font-size: 1.02rem; color: var(--navy); margin: 1.4rem 0 .4rem; padding-left: .6rem; border-left: 3px solid var(--navy); line-height: 1.3; }
+p, li { max-width: 46em; }
+.sub, .stamp { color: var(--muted); font-size: .92rem; margin: .2rem 0 .8rem; }
+.stamp { margin: .5rem 0 0; font-size: .82rem; }
+b { font-weight: 600; }
+.up { color: var(--rise); } .down { color: var(--fall); }
+
+.home { padding: 2rem 0 1rem; }
+.home h1 { font-size: clamp(2rem, 5vw, 3.2rem); }
+.lead { color: var(--muted); font-size: 1.05rem; max-width: 38em; }
+.home .gauge { max-width: 44rem; }
+
+.hero { background: var(--paper); border: 1px solid var(--rule); border-top: 3px solid var(--navy); padding: 1.3rem 1.5rem 1.1rem; }
+.hero-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+.parent { color: var(--muted); font-size: .95rem; font-weight: 500; }
+.badge { color: #fff; font-weight: 700; font-size: 1.1rem; padding: .3rem .85rem; border-radius: 2px; white-space: nowrap; }
+.why { margin: .8rem 0 0; }
+
+.gauge { margin-top: 1rem; padding-top: 1.3rem; }
+.gauge .track { position: relative; height: 10px; display: grid; grid-template-columns: 3fr 1fr 3fr; gap: 2px; }
+.gauge .track span:nth-child(1) { background: linear-gradient(90deg, var(--fall), #A9C1E3); }
+.gauge .track span:nth-child(2) { background: #D7DCE2; }
+.gauge .track span:nth-child(3) { background: linear-gradient(90deg, #EBB2AC, var(--rise)); }
+.gauge .mark { position: absolute; top: -7px; width: 3px; height: 24px; background: var(--ink); }
+.gauge .mark b { position: absolute; top: -1.45rem; left: 50%; transform: translateX(-50%); font-size: .85rem; white-space: nowrap; }
+.gauge .ticks { display: grid; grid-template-columns: 3fr 1fr 3fr; font-size: .76rem; color: var(--muted); margin-top: .3rem; }
+.gauge .ticks span:nth-child(2) { text-align: center; } .gauge .ticks span:nth-child(3) { text-align: right; }
+
+.figs { display: grid; grid-template-columns: repeat(6, 1fr); background: var(--paper); border: 1px solid var(--rule); border-top: 0; }
+.home + .figs { border-top: 1px solid var(--rule); }
+.fig { padding: .8rem 1rem; border-left: 1px solid var(--rule); }
+.fig:first-child { border-left: 0; }
+.fig .lab { font-size: .82rem; color: var(--muted); font-weight: 500; }
+.fig .num { font-size: 1.5rem; font-weight: 700; line-height: 1.3; }
+.fig .sub { font-size: .74rem; margin: 0; line-height: 1.35; }
+@media (max-width: 900px) { .figs { grid-template-columns: repeat(3, 1fr); }
+  .fig:nth-child(4) { border-left: 0; } .fig:nth-child(n+4) { border-top: 1px solid var(--rule); } }
+@media (max-width: 520px) { .figs { grid-template-columns: repeat(2, 1fr); }
+  .fig { border-left: 0 !important; border-top: 1px solid var(--rule); } .fig:nth-child(-n+2) { border-top: 0; }
+  .fig:nth-child(even) { border-left: 1px solid var(--rule) !important; } .fig .num { font-size: 1.3rem; } }
+
+.tbl { overflow-x: auto; background: var(--paper); border: 1px solid var(--rule); margin: .4rem 0 1rem; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+th, td { padding: .5rem .7rem; border-bottom: 1px solid #E6EAEF; text-align: left; white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; font-size: .82rem; background: #F6F8FA; }
+tr:last-child td { border-bottom: 0; }
+table.rank td:first-child { color: var(--muted); width: 2.5rem; }
+.chip { display: inline-block; width: .7rem; height: .7rem; margin-right: .4rem; vertical-align: -1px; }
+
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+@media (max-width: 760px) { .two { grid-template-columns: 1fr; gap: 0; } }
+.plates { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 6px; }
+.plate { display: flex; align-items: center; gap: .55rem; background: var(--paper); border: 1px solid var(--rule);
+  padding: .45rem .7rem .45rem 0; color: var(--ink); text-decoration: none; font-size: .92rem; }
+.plate:hover { border-color: var(--navy); }
+.plate i { width: 4px; align-self: stretch; }
+.plate span { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.more { margin: 2rem 0; }
+.btn { display: inline-block; background: var(--navy); color: #fff; text-decoration: none; padding: .6rem 1.1rem; font-weight: 600; border-radius: 2px; }
+
+.ad { margin: 1.6rem 0; text-align: center; overflow-x: auto; }
+.ad-mo { display: none; }
+@media (max-width: 760px) { .ad-pc { display: none; } .ad-mo { display: block; } }
+.ad-notice { font-size: .8rem; color: var(--muted); margin: 0 auto .4rem; }
+
+.foot { margin-top: 3rem; padding: 2rem 0 2.4rem; background: var(--navy); color: #C9D4E2; font-size: .86rem; }
+.foot .brand { color: #fff; font-weight: 700; font-size: 1.1rem; margin-bottom: .4rem; }
+.foot p { margin: .25rem 0; max-width: 56em; }
+.foot a { color: #fff; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 2px; }

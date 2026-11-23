@@ -228,7 +228,9 @@ def band_section(pc, label, sgg_level):
            f'<a href="#b20"><small>20~30%</small><b>{n20}곳</b></a><a href="#b10"><small>10~20%</small><b>{n10}곳</b></a></div>']
     if not sgg_level and pc["시군구"].nunique() > 1:
         ct = pd.crosstab(pc["시군구"], pc["구간"]).reindex(columns=["30% 이상", "20~30%", "10~20%"], fill_value=0)
+        ct = ct.reindex(pc["시군구"].unique(), fill_value=0)
         ct["비교"] = pc.groupby("시군구").size()
+        ct = ct.fillna(0)
         ct = ct.sort_values(["30% 이상", "20~30%", "10~20%"], ascending=False)
         out.append(table(["시군구", "30% 이상", "20~30%", "10~20%", "비교한 곳"],
                          [(e(i), *map(int, r.values)) for i, r in ct.iterrows()]))

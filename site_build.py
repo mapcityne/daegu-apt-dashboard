@@ -24,6 +24,10 @@ from regions import SIDO_SHORT, regions
 
 BASE = Path(__file__).resolve().parent
 APP_URL = "https://k-apts.streamlit.app"
+MARK = ('<svg class="mark" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">'
+        '<rect width="32" height="32" rx="9" fill="#3B6FD8"/><rect x="7" y="17" width="5" height="8" rx="1" fill="#fff"/>'
+        '<rect x="13.5" y="12" width="5" height="13" rx="1" fill="#fff"/><rect x="20" y="7" width="5" height="18" rx="1" '
+        'fill="#fff"/><rect x="20" y="7" width="5" height="3.5" rx="1" fill="#FF8A7A"/></svg>')
 REPO_URL = "https://github.com/mapcityne/daegu-apt-dashboard"
 VCOLOR = {"상승": "#C8372D", "하락": "#2160B8", "보합": "#8C96A3", "판단 보류": "#B8C0CA"}
 ARROW = {"상승": "▲", "하락": "▼", "보합": "■", "판단 보류": "·"}
@@ -88,11 +92,22 @@ def figures(s) -> str:
 
 
 def badge(j):
-    return f'<span class="badge" style="background:{VCOLOR.get(j, "#8C96A3")}">{ARROW.get(j, "")} {j}</span>'
+    return f'<span class="badge v-{VKEY.get(j, "hold")}">{ARROW.get(j, "")} {j}</span>'
 
 
 def chip(j):
-    return f'<span class="chip" style="background:{VCOLOR.get(j, "#8C96A3")}"></span>'
+    return f'<span class="vpill v-{VKEY.get(j, "hold")}">{ARROW.get(j, "")} {e(str(j))}</span>'
+
+
+VKEY = {"상승": "up", "하락": "down", "보합": "flat", "판단 보류": "hold"}
+
+
+def region_card(href, name, s, extra=""):
+    j = s.get("판정") if isinstance(s.get("판정"), str) else "판단 보류"
+    c3, c1 = pct(s.get("3개월")), pct(s.get("1년"))
+    return (f'<a class="rcard" href="{href}"><div class="rc-top"><b>{e(name)}</b>{chip(j)}</div>'
+            f'<div class="rc-nums"><div><small>3개월</small><strong class="{sign_cls(c3)}">{c3}</strong></div>'
+            f'<div><small>1년</small><strong class="{sign_cls(c1)}">{c1}</strong></div></div>{extra}</a>')
 
 
 # ───────────────────────── 페이지 틀 ─────────────────────────
@@ -120,27 +135,29 @@ class Site:
 <link rel="canonical" href="{self.base_url}/{path}">
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}">
 <meta property="og:type" content="website"><meta property="og:url" content="{self.base_url}/{path}">
-<link rel="icon" href="{up}logo-mark.png">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="{up}mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="{up}style.css">
 {self.head_ads}
 </head><body>
 <header class="top"><div class="wrap">
-<a class="logo" href="{up}index.html"><img src="{up}logo.png" alt="k-apts" height="30"></a>
-<nav class="menu"><a href="{up}index.html">전국</a><a href="{up}r/27.html">대구</a><a href="{up}r/11.html">서울</a>
-<a href="{up}about.html">기준 안내</a><a class="app" href="{APP_URL}">자세히 분석</a></nav>
-</div></header>
+<a class="logo" href="{up}index.html">{MARK}<span>k-apts</span></a>
+<form class="search" role="search" onsubmit="return kGo(this)"><input name="q" list="k-regions" autocomplete="off"
+ placeholder="지역 검색 (예: 대구 수성구)" aria-label="지역 검색"><button>검색</button></form>
+</div><nav class="menu wrap"><a href="{up}index.html">전국</a><a href="{up}r/11.html">서울</a><a href="{up}r/41.html">경기</a>
+<a href="{up}r/27.html">대구</a><a href="{up}r/26.html">부산</a><a href="{up}about.html">기준 안내</a>
+<a class="app" href="{APP_URL}">자세히 분석하기</a></nav></header>
 <main class="wrap">{crumb}{body}</main>
 <footer class="foot"><div class="wrap">
-<div class="brand">k-apts</div>
+<div class="brand">{MARK}<span>k-apts</span></div>
 <p>국토교통부 아파트 매매 실거래가를 매일 새벽 받아 전국 시군구의 가격 흐름을 계산합니다.</p>
 <p>실거래가: 국토교통부(공공데이터포털). 미분양·주택 준공: 국토교통부, 인구 이동: 국가데이터처(KOSIS).
 행정구역 경계: 통계청 SGIS, vuski/admdongkor(CC BY 4.0).</p>
 <p>이 사이트는 참고 자료이며 투자 판단의 근거로 정확성을 보증하지 않습니다.</p>
-<p><a href="{up}about.html">기준 안내</a> · <a href="{up}privacy.html">개인정보처리방침</a> ·
-<a href="{REPO_URL}/issues">문의</a> · <a href="{APP_URL}">대화형 분석 앱</a></p>
+<p class="links"><a href="{up}about.html">기준 안내</a><a href="{up}privacy.html">개인정보처리방침</a>
+<a href="{REPO_URL}/issues">문의</a><a href="{APP_URL}">대화형 분석 앱</a></p>
 </div></footer>
+<datalist id="k-regions"></datalist><script>window.K_UP="{up}"</script><script src="{up}regions.js" defer></script>
 </body></html>"""
         f = self.out / path
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -205,9 +222,10 @@ def band_section(pc, label, sgg_level):
     cnt = pc["구간"].value_counts()
     n10, n20, n30 = (int(cnt.get(k, 0)) for k in ["10~20%", "20~30%", "30% 이상"])
     out = [f'<h2>1년 전보다 많이 오른 아파트</h2><p class="sub">{e(label)}에서 1년 전과 비교할 수 있는 '
-           f'{len(pc):,}곳(같은 단지·같은 면적, 두 시점 각 2건 이상) 중 10~20% 오른 곳 <b>{n10}곳</b>, '
-           f'20~30% <b>{n20}곳</b>, 30% 이상 <b>{n30}곳</b>입니다. 최근 3개월과 1년 전 같은 3개월의 '
-           "중위 거래가를 비교했습니다.</p>"]
+           f'{len(pc):,}곳(같은 단지·같은 면적, 두 시점 각 2건 이상)의 최근 3개월과 1년 전 같은 3개월 '
+           "중위 거래가를 비교했습니다.</p>"
+           f'<div class="bands"><a href="#b30"><small>30% 이상</small><b>{n30}곳</b></a>'
+           f'<a href="#b20"><small>20~30%</small><b>{n20}곳</b></a><a href="#b10"><small>10~20%</small><b>{n10}곳</b></a></div>']
     if not sgg_level and pc["시군구"].nunique() > 1:
         ct = pd.crosstab(pc["시군구"], pc["구간"]).reindex(columns=["30% 이상", "20~30%", "10~20%"], fill_value=0)
         ct["비교"] = pc.groupby("시군구").size()
@@ -218,7 +236,8 @@ def band_section(pc, label, sgg_level):
         sub = pc[pc["구간"] == b]
         if len(sub):
             more = f" (상위 {n}곳)" if n and len(sub) > n else ""
-            out.append(f"<h3>{b} 오른 곳{more}</h3>" + riser_table(sub, n))
+            anchor = {"30% 이상": "b30", "20~30%": "b20", "10~20%": "b10"}[b]
+            out.append(f'<h3 id="{anchor}">{b} 오른 곳{more}</h3>' + riser_table(sub, n))
     return "".join(out)
 
 
@@ -242,10 +261,10 @@ def hero(name, parent_name, s):
     j = s.get("판정", "판단 보류")
     why = ("거래가 적어 방향을 판단하기 어렵습니다." if j == "판단 보류" else
            f"같은 단지·같은 면적 기준 가격지수는 최근 3개월 {pct(s.get('3개월'))}, 1년 {pct(s.get('1년'))}입니다.")
-    p = f'<div class="parent">{e(parent_name)}</div>' if parent_name else ""
-    return (f'<section class="hero"><div class="hero-top"><div>{p}<h1>{e(name)} 아파트 실거래가</h1></div>'
-            f'{badge(j)}</div>{gauge(s.get("3개월")) if j != "판단 보류" else ""}<p class="why">{why}</p></section>'
-            + figures(s))
+    p = f'<span class="eyebrow">{e(parent_name)}</span>' if parent_name else ""
+    return (f'<section class="hero card"><div class="hero-top"><div>{p}<h1>{e(name)} 아파트 실거래가</h1></div>'
+            f'{badge(j)}</div><p class="why">{why}</p>{gauge(s.get("3개월")) if j != "판단 보류" else ""}'
+            f'{figures(s)}</section>')
 
 
 # ───────────────────────── 생성 ─────────────────────────
@@ -260,6 +279,7 @@ def main():
     shutil.copy(BASE / "site_assets" / "style.css", out / "style.css")
     shutil.copy(BASE / "assets" / "logo.png", out / "logo.png")
     shutil.copy(BASE / "site_assets" / "logo-mark.png", out / "logo-mark.png")
+    (out / "mark.svg").write_text(MARK.replace('class="mark" ', 'xmlns="http://www.w3.org/2000/svg" '), encoding="utf-8")
 
     meta = json.loads((OUT_DIR / "meta.json").read_text(encoding="utf-8"))
     ref = pd.Timestamp(meta["기준월"] + "-01")
@@ -268,6 +288,10 @@ def main():
     row = lambda c: B.row_dict(S.loc[c]) if c in S.index else {"판정": "판단 보류"}  # noqa: E731
     reg = regions()
     sname = reg.set_index("sggcd")["sggnm"]
+    rmap = {"전국": "index.html"} | {v: f"r/{k}.html" for k, v in SIDO_SHORT.items()} | {
+        f"{SIDO_SHORT[r.sidocd]} {r.sggnm}": f"r/{r.sggcd}.html" for r in reg.itertuples()}
+    (out / "regions.js").write_text(
+        "window.K_REGIONS=" + json.dumps(rmap, ensure_ascii=False) + ";\n" + SEARCH_JS, encoding="utf-8")
     site = Site(out, a.base_url)
     stamp = f"{ref:%Y년 %m월} 기준 · 갱신 {meta['생성'][:10]}"
     nat = row("00")
@@ -296,7 +320,8 @@ def main():
                             f"{last - pd.Timedelta(days=29):%Y.%m.%d}~{last:%Y.%m.%d}, 거래 {len(r_sgg):,}건 중 "
                             "단지별 가장 비싼 거래 10곳입니다(직거래 제외).</p>" + rank_table(tp))
             body.append(band_section(p_sgg, name, True))
-            body.append(f"<h2>{e(rg['sggnm'])} 시장 브리핑</h2>" + briefing_html(ss, row(sido), "법정동", short))
+            body.append(f"<h2>{e(rg['sggnm'])} 시장 브리핑</h2><div class='card brief'>"
+                        + briefing_html(ss, row(sido), "법정동", short) + "</div>")
             body.append(site.coupang)
             body.append(f'<p class="more"><a class="btn" href="{APP_URL}/region?r={code}">'
                         f"{e(name)} 단지별 거래 흐름 자세히 보기</a></p>")
@@ -315,14 +340,13 @@ def main():
         sg = stats[(stats["단계"] == "시군구") & (stats["상위"] == sido)].copy()
         sg["nm"] = sg["코드"].map(sname)
         sg = sg.sort_values("3개월", ascending=False, na_position="last")
-        body.append("<h2>시군구별 가격 흐름</h2><p class='sub'>같은 단지끼리 비교한 가격지수입니다.</p>" + table(
-            ["시군구", "판정", "3개월", "1년", "오른 단지"],
-            [(f'<a href="{r["코드"]}.html">{e(r["nm"])}</a>', chip(r["판정"]) + e(str(r["판정"])),
-              f'<span class="{sign_cls(pct(r["3개월"]))}">{pct(r["3개월"])}</span>',
-              f'<span class="{sign_cls(pct(r["1년"]))}">{pct(r["1년"])}</span>',
-              pct(r["상승비율"], 0, False) if pd.notna(r["상승비율"]) else "-") for _, r in sg.iterrows()]))
+        body.append("<h2>시군구별 가격 흐름</h2><p class='sub'>같은 단지끼리 비교한 가격지수입니다. 최근 3개월 "
+                    "상승 폭이 큰 순서이고, 누르면 그 지역 순위와 브리핑을 볼 수 있습니다.</p><div class='rgrid'>"
+                    + "".join(region_card(f"{r['코드']}.html", r["nm"], B.row_dict(r)) for _, r in sg.iterrows())
+                    + "</div>")
         body.append(band_section(pc, short, False))
-        body.append(f"<h2>{e(short)} 시장 브리핑</h2>" + briefing_html(s, nat, "시군구", None))
+        body.append(f"<h2>{e(short)} 시장 브리핑</h2><div class='card brief'>" + briefing_html(s, nat, "시군구", None)
+                    + "</div>")
         body.append(site.coupang)
         site.write(f"r/{sido}.html", f"{short} 아파트 실거래가 순위와 시군구별 시세 | k-apts",
                    f"{short} 시군구별 아파트 실거래가 1위, 많이 오른 아파트, 가격 흐름 판정.",
@@ -344,21 +368,34 @@ def main():
             f'<span>{e(r["nm"])}</span><b class="{sign_cls(pct(r["3개월"]))}">{pct(r["3개월"])}</b></a>'
             for _, r in df.iterrows()) + "</div>"
 
-    body = [f'<section class="home"><h1>전국 아파트값, 지금은 {word}</h1><p class="lead">{ref:%Y년 %m월} 기준, '
+    n_sgg = int((stats["단계"] == "시군구").sum())
+    body = [f'<section class="home"><span class="pill">국토교통부 실거래가 기반 · 매일 새벽 갱신</span>'
+            f'<h1>전국 아파트값,<br>지금은 <em>{word}</em></h1><p class="lead">{ref:%Y년 %m월} 기준, '
             f"같은 단지끼리 비교한 가격지수는 최근 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}입니다. "
-            f"전국 {meta['거래수']:,}건의 실거래로 지역마다 오르는지 내리는지를 매일 계산합니다.</p>"
-            f"{gauge(nat.get('3개월'))}</section>", figures(nat), site.ad()]
-    body.append("<h2>시도별 가격 흐름과 최근 한 달 1위 거래</h2>" + table(
-        ["시도", "판정", "3개월", "1년", "한 달 최고가"],
-        [(f'<a href="r/{c}.html">{e(n)}</a>', chip(s.get("판정")) + e(str(s.get("판정"))),
-          f'<span class="{sign_cls(pct(s.get("3개월")))}">{pct(s.get("3개월"))}</span>',
-          f'<span class="{sign_cls(pct(s.get("1년")))}">{pct(s.get("1년"))}</span>',
-          (f"{e(sido_first[c][1])} {e(sido_first[c][2].단지명)} <b>{eok(sido_first[c][2].거래금액_억)}</b>"
-           if c in sido_first else "-")) for c, n, s in sido_rows]))
+            "지역마다 오르는지 내리는지, 어디서 얼마에 거래됐는지 정리해 드립니다.</p>"
+            '<div class="cta"><a class="btn" href="r/27.html">대구 실거래가 순위 보기</a>'
+            '<a class="btn ghost" href="about.html">숫자 읽는 법</a></div>'
+            f'<div class="stats"><div><b>{meta["거래수"] / 1e4:,.0f}만 건</b><span>분석한 실거래</span></div>'
+            f'<div><b>{n_sgg}곳</b><span>전국 시군구</span></div><div><b>매일</b><span>새벽 자동 갱신</span></div>'
+            "</div></section>",
+            f'<section class="card signal"><div class="signal-head"><h2>전국 시장 신호</h2>{badge(j)}</div>'
+            f"{gauge(nat.get('3개월'))}{figures(nat)}</section>", site.ad()]
+
+    def first_line(c):
+        if c not in sido_first:
+            return ""
+        _, nm, t, _ = sido_first[c]
+        return (f'<div class="rc-foot">한 달 최고가 <b>{eok(t.거래금액_억)}</b><br><span>{e(nm)} '
+                f'{e(t.단지명)}</span></div>')
+
+    body.append("<h2>시도별 시세</h2><p class='sub'>색은 최근 3개월 판정입니다. 누르면 시군구별 순위로 갑니다.</p>"
+                "<div class='rgrid'>" + "".join(region_card(f"r/{c}.html", n, s, first_line(c))
+                                               for c, n, s in sido_rows) + "</div>")
     body.append('<div class="two"><div><h2>지금 오르는 곳</h2><p class="sub">최근 3개월 가격지수가 1% 넘게 오른 '
                 f'시군구 중 상승 폭이 큰 순서입니다.</p>{plates(up)}</div><div><h2>지금 내리는 곳</h2>'
                 f'<p class="sub">1% 넘게 내린 시군구 중 하락 폭이 큰 순서입니다.</p>{plates(dn)}</div></div>')
-    body.append("<h2>이번 달 전국 시장 이야기</h2>" + briefing_html(nat, None, "시도", None))
+    body.append("<h2>이번 달 전국 시장 이야기</h2><div class='card brief'>" + briefing_html(nat, None, "시도", None)
+                + "</div>")
     body.append(site.coupang)
     site.write("index.html", "k-apts 전국 아파트 실거래가 순위와 시세 흐름",
                "전국 시군구 아파트 실거래가 순위, 1년 전보다 많이 오른 아파트, 지역별 상승·하락 판정을 매일 갱신합니다.",
@@ -373,6 +410,13 @@ def main():
     site.pages.remove("404.html")
     site.finish()
     print(f"완료: {len(site.pages)}쪽 → {out}")
+
+
+SEARCH_JS = """(function(){var d=document.getElementById('k-regions');if(!d)return;
+Object.keys(window.K_REGIONS).forEach(function(k){var o=document.createElement('option');o.value=k;d.appendChild(o);});})();
+function kGo(f){var q=(f.q.value||'').trim().replace(/\\s+/g,' ');var R=window.K_REGIONS||{};var hit=R[q];
+if(!hit){var ks=Object.keys(R);for(var i=0;i<ks.length;i++){if(ks[i].replace(/ /g,'').indexOf(q.replace(/ /g,''))>=0){hit=R[ks[i]];break;}}}
+if(hit){location.href=(window.K_UP||'')+hit;}else{f.q.value='';f.q.placeholder='찾는 지역이 없습니다';}return false;}"""
 
 
 ABOUT = """<h1>기준 안내</h1>

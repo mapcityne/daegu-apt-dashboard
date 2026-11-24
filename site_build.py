@@ -110,6 +110,21 @@ def region_card(href, name, s, extra=""):
             f'<div><small>1년</small><strong class="{sign_cls(c1)}">{c1}</strong></div></div>{extra}</a>')
 
 
+def sibling_section(short, code, sib):
+    """같은 시도의 다른 시군구로 가는 내부 링크(최근 3개월 가격지수 변동과 함께)."""
+    sib = sib[sib["코드"] != code]
+    if sib.empty:
+        return ""
+    items = []
+    for _, r in sib.iterrows():
+        j = r["판정"] if isinstance(r["판정"], str) and r["판정"] in VCOLOR else "판단 보류"
+        c3 = pct(r["3개월"]) if pd.notna(r["3개월"]) else "-"
+        items.append(f'<a class="plate" href="{r["코드"]}.html"><i style="background:{VCOLOR[j]}"></i>'
+                     f'<span>{e(r["nm"])}</span><b class="{sign_cls(c3)}">{c3}</b></a>')
+    return (f"<h2>{e(short)} 다른 시군구 시세</h2><p class='sub'>최근 3개월 가격지수 변동입니다. 누르면 그 지역의 "
+            "실거래가 순위와 브리핑으로 갑니다.</p><div class='plates sib'>" + "".join(items) + "</div>")
+
+
 # ───────────────────────── 페이지 틀 ─────────────────────────
 class Site:
     def __init__(self, out: Path, base_url: str):
@@ -306,6 +321,9 @@ def main():
         s = row(sido)
         short = SIDO_SHORT[sido]
         subs = reg[reg["sidocd"] == sido].sort_values("sggcd")
+        sib = stats[(stats["단계"] == "시군구") & (stats["상위"] == sido)].copy()
+        sib["nm"] = sib["코드"].map(sname)
+        sib = sib.dropna(subset=["nm"]).sort_values("코드")
         # ── 시군구 페이지
         firsts = []
         for _, rg in subs.iterrows():
@@ -324,6 +342,7 @@ def main():
             body.append(band_section(p_sgg, name, True))
             body.append(f"<h2>{e(rg['sggnm'])} 시장 브리핑</h2><div class='card brief'>"
                         + briefing_html(ss, row(sido), "법정동", short) + "</div>")
+            body.append(sibling_section(short, code, sib))
             body.append(site.coupang)
             body.append(f'<p class="more"><a class="btn" href="{APP_URL}/region?r={code}">'
                         f"{e(name)} 단지별 거래 흐름 자세히 보기</a></p>")

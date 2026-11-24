@@ -119,13 +119,16 @@ p, li { max-width: 46em; }
 
 /* 오르는·내리는 곳 */
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1.6rem; }
+.two > div { min-width: 0; }
 @media (max-width: 760px) { .two { grid-template-columns: 1fr; gap: 0; } }
-.plates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.plates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .plate { display: flex; align-items: center; gap: .6rem; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
   padding: .6rem .85rem; color: var(--ink); font-size: .93rem; }
 .plate:hover { text-decoration: none; border-color: #B9CBF2; }
 .plate i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .plate span { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plates.sib { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+@media (max-width: 420px) { .plates.sib { grid-template-columns: 1fr 1fr; } }
 
 /* 상승 구간 */
 .bands { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: .2rem 0 .6rem; }

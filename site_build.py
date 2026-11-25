@@ -143,6 +143,7 @@ class Site:
         if crumbs:
             crumb = '<nav class="crumb">' + " › ".join(
                 f'<a href="{up}{h}">{e(t)}</a>' if h else e(t) for t, h in crumbs) + "</nav>"
+        ld = self.jsonld(path, crumbs)
         doc = f"""<!doctype html>
 <html lang="ko"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -153,7 +154,7 @@ class Site:
 <link rel="icon" href="{up}mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="{up}style.css">
-{self.head_ads}
+{ld}{self.head_ads}
 </head><body>
 <header class="top"><div class="wrap">
 <a class="logo" href="{up}index.html">{MARK}<span>k-apts</span></a>
@@ -179,11 +180,26 @@ class Site:
         f.write_text(doc, encoding="utf-8")
         self.pages.append(path)
 
+    def jsonld(self, path, crumbs):
+        """검색 결과에 경로(전국 › 시도 › 시군구)가 보이도록 BreadcrumbList, 첫 화면엔 WebSite."""
+        if path == "index.html":
+            d = {"@context": "https://schema.org", "@type": "WebSite", "name": "k-apts",
+                 "alternateName": "k-apts 전국 아파트 실거래가", "url": f"{self.base_url}/", "inLanguage": "ko"}
+        elif crumbs:
+            d = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+                {"@type": "ListItem", "position": i + 1, "name": t, "item": f"{self.base_url}/{h or path}"}
+                for i, (t, h) in enumerate(crumbs)]}
+        else:
+            return ""
+        js = json.dumps(d, ensure_ascii=False).replace("</", "<\\/")
+        return f'<script type="application/ld+json">{js}</script>\n'
+
     def ad(self):
         return self.adfit
 
     def finish(self):
-        urls = "".join(f"<url><loc>{self.base_url}/{p}</loc></url>" for p in self.pages)
+        lm = f"<lastmod>{self.lastmod}</lastmod>" if getattr(self, "lastmod", "") else ""
+        urls = "".join(f"<url><loc>{self.base_url}/{p}</loc>{lm}</url>" for p in self.pages)
         (self.out / "sitemap.xml").write_text(
             f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
             f"{urls}</urlset>", encoding="utf-8")
@@ -284,6 +300,19 @@ def hero(name, parent_name, s):
             f'{figures(s)}</section>')
 
 
+def page_desc(name, s, top, n, ref, tail, where=""):
+    """검색 결과 설명문: 그 지역의 실제 숫자(최고가 거래·가격지수 변동)로 페이지마다 다르게 쓴다."""
+    parts = [f"{name} 아파트 실거래가({ref:%Y년 %m월} 기준)."]
+    if top is not None:
+        w = f"{where} " if where else ""
+        parts.append(f"최근 한 달 {n:,}건 중 최고가는 {w}{top.단지명} {top.전용면적:.0f}㎡ {eok(top.거래금액_억)}.")
+    j = s.get("판정")
+    if isinstance(j, str) and j != "판단 보류" and pd.notna(s.get("3개월")):
+        parts.append(f"동일단지 가격지수 3개월 {pct(s.get('3개월'))}, 1년 {pct(s.get('1년'))}({j}).")
+    parts.append(tail + ".")
+    return " ".join(parts)
+
+
 # ───────────────────────── 생성 ─────────────────────────
 def main():
     ap = argparse.ArgumentParser()
@@ -310,6 +339,7 @@ def main():
     (out / "regions.js").write_text(
         "window.K_REGIONS=" + json.dumps(rmap, ensure_ascii=False) + ";\n" + SEARCH_JS, encoding="utf-8")
     site = Site(out, a.base_url)
+    site.lastmod = meta["생성"][:10]
     stamp = f"{ref:%Y년 %m월} 기준 · 갱신 {meta['생성'][:10]}"
     nat = row("00")
 
@@ -347,7 +377,9 @@ def main():
             body.append(f'<p class="more"><a class="btn" href="{APP_URL}/region?r={code}">'
                         f"{e(name)} 단지별 거래 흐름 자세히 보기</a></p>")
             site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | k-apts",
-                       f"{name} 아파트 최근 실거래가 순위 10, 1년 전보다 10·20·30% 오른 아파트, 가격 흐름 판정.",
+                       page_desc(name, ss, tp.iloc[0] if len(r_sgg) else None, len(r_sgg), ref,
+                                 "최근 한 달 실거래가 순위 10, 1년 전보다 많이 오른 아파트" if len(r_sgg)
+                                 else "시장 브리핑과 같은 시도 다른 시군구 시세"),
                        "".join(body), [("전국", "index.html"), (short, f"r/{sido}.html"), (rg["sggnm"], None)])
         # ── 시도 페이지
         firsts.sort(key=lambda x: -x[2]["거래금액"])
@@ -370,7 +402,8 @@ def main():
                     + "</div>")
         body.append(site.coupang)
         site.write(f"r/{sido}.html", f"{short} 아파트 실거래가 순위와 시군구별 시세 | k-apts",
-                   f"{short} 시군구별 아파트 실거래가 1위, 많이 오른 아파트, 가격 흐름 판정.",
+                   page_desc(short, s, firsts[0][2] if firsts else None, len(recent), ref,
+                             "시군구별 1위 거래와 가격 흐름, 많이 오른 아파트", firsts[0][1] if firsts else ""),
                    "".join(body), [("전국", "index.html"), (short, None)])
         sido_rows.append((sido, short, s))
         print(f"{short}: 시군구 {len(subs)}쪽", flush=True)
@@ -419,7 +452,8 @@ def main():
                 + "</div>")
     body.append(site.coupang)
     site.write("index.html", "k-apts 전국 아파트 실거래가 순위와 시세 흐름",
-               "전국 시군구 아파트 실거래가 순위, 1년 전보다 많이 오른 아파트, 지역별 상승·하락 판정을 매일 갱신합니다.",
+               f"전국 시군구 아파트 실거래가 순위, 1년 전보다 많이 오른 아파트, 지역별 상승·하락 판정을 매일 갱신합니다. "
+               f"{ref:%Y년 %m월} 기준 전국 동일단지 가격지수 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}.",
                "".join(body))
 
     site.write("about.html", "기준 안내 | k-apts", "k-apts가 숫자를 만드는 방법과 데이터 출처.", ABOUT,

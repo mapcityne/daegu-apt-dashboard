@@ -46,7 +46,7 @@ jobs:
       - name: 사이트 생성
         env:
           GA_ID: ${{ vars.GA_ID || 'G-FTBCVET1V3' }}
-          NAVER_SITE_VERIFICATION: ${{ vars.NAVER_SITE_VERIFICATION }}
+          NAVER_SITE_VERIFICATION: ${{ vars.NAVER_SITE_VERIFICATION || '52d1efd85415906c092b9c44d93c68873a669747' }}
           BING_SITE_VERIFICATION: ${{ vars.BING_SITE_VERIFICATION }}
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}
           ADFIT_UNIT_PC: ${{ vars.ADFIT_UNIT_PC }}

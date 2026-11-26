@@ -250,6 +250,69 @@ def period_table(res) -> str:
     return f'<div class="tbl"><table class="sigtbl ptbl"><thead>{head}</thead><tbody>{body}</tbody></table></div>'
 
 
+def hbar_chart(title, rows, series, fmt, note="", zero_based=False) -> str:
+    """가로 막대 묶음 그래프(SVG). rows=[(행 이름, 보조 글자)], series=[(이름, css클래스, [값|None], [막대 끝 글자])].
+    값이 None이면 막대 없이 막대 끝 글자만 쓴다. 숫자는 모두 막대 끝에 그대로 적는다."""
+    vals = [v for _, _, vs, _ in series for v in vs if v is not None and v == v]
+    lo = min([0.0] + vals) if not zero_based else 0.0
+    hi = max([0.0] + vals)
+    span = (hi - lo) or 1.0
+    lo, hi = lo - span * (0.08 if lo < 0 else 0), hi + span * 0.62  # 끝 글자 자리
+    W, L, R, BH, GAP, PAD = 420, 74, 4, 15, 4, 12
+    gh = len(series) * (BH + GAP) - GAP
+    H = 26 + len(rows) * (gh + PAD * 2)
+    x = lambda v: L + (v - lo) / (hi - lo) * (W - L - R)
+    out = [f'<svg viewBox="0 0 {W} {H}" class="chart" role="img" aria-label="{e(title)}">']
+    lg = 0
+    for name, cls, _, _ in series:
+        out.append(f'<rect x="{L + lg}" y="4" width="10" height="10" class="{cls}"/>'
+                   f'<text x="{L + lg + 14}" y="13" class="lg">{e(name)}</text>')
+        lg += 14 + len(name) * 12 + 14
+    out.append(f'<line x1="{x(0):.1f}" x2="{x(0):.1f}" y1="22" y2="{H - 4}" class="zero"/>')
+    y = 26
+    for i, (rn, sub) in enumerate(rows):
+        top = y + PAD
+        out.append(f'<text x="0" y="{top + gh / 2 - 1:.1f}" class="rl">{e(rn)}</text>'
+                   f'<text x="0" y="{top + gh / 2 + 13:.1f}" class="rs">{e(sub)}</text>')
+        for k, (name, cls, vs, labels) in enumerate(series):
+            by = top + k * (BH + GAP)
+            v = vs[i]
+            if v is None or v != v:
+                out.append(f'<text x="{x(0) + 6:.1f}" y="{by + BH - 3}" class="vl na">{e(labels[i])}</text>')
+                continue
+            x0, x1 = sorted([x(0), x(v)])
+            out.append(f'<rect x="{x0:.1f}" y="{by}" width="{max(x1 - x0, 1.5):.1f}" height="{BH}" class="{cls}"/>')
+            tx, anc = (x1 + 5, "start") if v >= 0 else (x(0) + 5, "start")  # 음수도 0선 오른쪽에 글자
+            out.append(f'<text x="{tx:.1f}" y="{by + BH - 3}" class="vl" text-anchor="{anc}">{e(labels[i])}</text>')
+        if i < len(rows) - 1:
+            out.append(f'<line x1="0" x2="{W}" y1="{top + gh + PAD:.1f}" y2="{top + gh + PAD:.1f}" class="sep"/>')
+        y += gh + PAD * 2
+    out.append("</svg>")
+    return (f'<figure class="chartbox"><figcaption>{e(title)}</figcaption>{"".join(out)}'
+            + (f'<p class="chart-note">{e(note)}</p>' if note else "") + "</figure>")
+
+
+def period_charts(res) -> str:
+    rows = [(lb, dspan(res[FOCUS[0][0]][lb]["시작"], res[FOCUS[0][0]][lb]["끝"])) for lb, _ in PERIODS]
+    cls = {"11": "s1", "27": "s2"}
+    ch1 = []
+    ch2 = []
+    for c, n in FOCUS:
+        rr = [res[c][lb] for lb, _ in PERIODS]
+        ch1.append((n, cls[c], [None if pd.isna(r["변동"]) else round(float(r["변동"]), 1) for r in rr],
+                    [f'{pchg(r["변동"])} ({r["비교"]:,}곳)' if pd.notna(r["변동"]) else f'표본 부족 ({r["비교"]}곳)'
+                     for r in rr]))
+        sh = [r["신고가"] / r["거래"] * 100 if r["거래"] else None for r in rr]
+        ch2.append((n, cls[c], sh, [f'{v:.1f}% ({r["신고가"]:,}/{r["거래"]:,}건)' if v is not None else "거래 없음"
+                                    for v, r in zip(sh, rr)]))
+    return ('<div class="charts">'
+            + hbar_chart("가격 변동 (같은 단지·같은 면적, 바로 앞 같은 기간 대비)", rows, ch1, None,
+                         "괄호는 두 기간 모두 거래가 있어 비교한 단지·면적 수")
+            + hbar_chart("거래 중 신고가 비중", rows, ch2, None, "괄호는 신고가 건수 / 거래 건수(해제·직거래 제외)",
+                         zero_based=True)
+            + "</div>")
+
+
 def period_csv(res) -> str:
     import csv, io
     buf = io.StringIO()
@@ -830,7 +893,8 @@ def main():
             '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
             '<section class="signal"><h2>서울·대구 기간별 시세</h2><p class="sub">최근 2주일·1달·2달·3달 계약을 '
             '바로 앞 같은 길이 기간과 같은 단지·같은 면적끼리 비교했습니다.</p>'
-            f"{period_table(pres)}"
+            f"{period_charts(pres)}"
+            f'<details class="as-table"><summary>표로 보기</summary>{period_table(pres)}</details>'
             f'<p class="sig-note">{PERIOD_BASIS}<br>최근 계약은 신고기한(계약 후 30일) 전이라 바뀔 수 있습니다.<br>'
             f'<span class="ai-note">{AI_NOTE}</span></p>'
             '<p class="dl"><a href="data/seoul_daegu_period.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',

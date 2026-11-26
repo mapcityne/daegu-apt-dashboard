@@ -288,3 +288,23 @@ table.monthly td { white-space: nowrap; }
 .ptbl small { display: block; font-size: .74rem; font-weight: 400; color: var(--muted); }
 .ptbl thead a { color: var(--ink); }
 .ptbl td.na { color: var(--muted); font-weight: 400; font-size: .86rem; }
+
+/* 그래프 */
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem 2rem; margin-top: 1rem; }
+@media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+.chartbox { margin: 0; }
+.chartbox figcaption { font-weight: 700; color: var(--ink); font-size: .95rem; margin-bottom: .3rem; }
+.chart { width: 100%; height: auto; display: block; font-family: var(--sans); }
+.chart .s1 { fill: var(--navy); } .chart .s2 { fill: var(--accent); }
+.chart .zero { stroke: var(--ink); stroke-width: 1; }
+.chart .sep { stroke: var(--line-2); stroke-width: 1; }
+.chart .rl { font-size: 13px; font-weight: 700; fill: var(--ink); }
+.chart .rs { font-size: 10px; fill: var(--muted); }
+.chart .vl { font-size: 11px; font-weight: 600; fill: var(--text); font-variant-numeric: tabular-nums; }
+.chart .vl.na { fill: var(--muted); font-weight: 400; }
+.chart .lg { font-size: 11px; fill: var(--text); }
+.chart-note { color: var(--muted); font-size: .78rem; margin: .3rem 0 0; }
+.as-table { margin-top: 1rem; }
+.as-table summary { cursor: pointer; font-size: .9rem; font-weight: 600; color: var(--blue); }
+.as-table .tbl { margin-top: .6rem; }
+@media print { .as-table { display: none; } }

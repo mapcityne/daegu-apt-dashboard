@@ -194,14 +194,22 @@ def josa(word, a, b):
     return a
 
 
-FOCUS = [("11", "서울"), ("27", "대구")]
+# 기간별 시세·주요 뉴스 대상 지역: (키, 이름, 시도코드, 제외할 시군구코드 앞 4자리)
+GG_NORTH = {"4115": "의정부시", "4125": "동두천시", "4128": "고양시", "4131": "구리시", "4136": "남양주시",
+            "4148": "파주시", "4163": "양주시", "4165": "포천시", "4180": "연천군", "4182": "가평군"}
+FOCUS = [("11", "서울", "11", ()), ("41S", "경기남부", "41", tuple(GG_NORTH)),
+         ("26", "부산", "26", ()), ("27", "대구", "27", ())]
+FOCUS_NOTE = ("경기남부: 경기도 31개 시군 중 북부 10개 시군(" + "·".join(GG_NORTH.values())
+              + ")을 뺀 21개 시군")
 PERIODS = [("2주일", 14), ("1달", 30), ("2달", 60), ("3달", 90)]
 MIN_PAIRS = 30  # 비교 단지·면적이 이보다 적으면 변동률을 내지 않는다
 
 
-def focus_base(code):
-    """한 시도의 분석 대상 거래(해제·직거래 제외)와 신고가 표시."""
-    df = A.prepare(enrich(pd.read_parquet(OUT_DIR / f"trades_{code}.parquet")))
+def focus_base(sido, excl=()):
+    """한 지역의 분석 대상 거래(해제·직거래 제외)와 신고가 표시."""
+    df = A.prepare(enrich(pd.read_parquet(OUT_DIR / f"trades_{sido}.parquet")))
+    if excl:
+        df = df[~df["시군구코드"].astype(str).str[:4].isin(excl)]
     return A.mark_new_highs(A.analysis_base(df))
 
 
@@ -235,13 +243,13 @@ def dspan(a, b):
 def period_table(res) -> str:
     """서울·대구 기간별 표: 행=기간, 열=도시별 가격 변동·거래·신고가."""
     head = ('<tr><th rowspan="2">기간<br><small>계약일</small></th>'
-            + "".join(f'<th colspan="3"><a href="r/{c}.html">{n}</a></th>' for c, n in FOCUS) + "</tr><tr>"
+            + "".join(f'<th colspan="3"><a href="r/{sd}.html">{n}</a></th>' for c, n, sd, _ in FOCUS) + "</tr><tr>"
             + "<th>가격 변동</th><th>거래</th><th>신고가</th>" * len(FOCUS) + "</tr>")
     body = ""
     for lb, _ in PERIODS:
         r0 = res[FOCUS[0][0]][lb]
         cells = ""
-        for c, _ in FOCUS:
+        for c, *_ in FOCUS:
             r = res[c][lb]
             v = (f'<td class="{sign_cls(pchg(r["변동"]))}">{pchg(r["변동"])}<small>{r["비교"]:,}곳 비교</small></td>'
                  if pd.notna(r["변동"]) else f'<td class="na">표본 부족<small>{r["비교"]:,}곳</small></td>')
@@ -294,10 +302,10 @@ def hbar_chart(title, rows, series, fmt, note="", zero_based=False) -> str:
 
 def period_charts(res) -> str:
     rows = [(lb, dspan(res[FOCUS[0][0]][lb]["시작"], res[FOCUS[0][0]][lb]["끝"])) for lb, _ in PERIODS]
-    cls = {"11": "s1", "27": "s2"}
+    cls = {c: f"s{i + 1}" for i, (c, *_) in enumerate(FOCUS)}
     ch1 = []
     ch2 = []
-    for c, n in FOCUS:
+    for c, n, *_ in FOCUS:
         rr = [res[c][lb] for lb, _ in PERIODS]
         ch1.append((n, cls[c], [None if pd.isna(r["변동"]) else round(float(r["변동"]), 1) for r in rr],
                     [f'{pchg(r["변동"])} ({r["비교"]:,}곳)' if pd.notna(r["변동"]) else f'표본 부족 ({r["비교"]}곳)'
@@ -319,7 +327,7 @@ def period_csv(res) -> str:
     w = csv.writer(buf)
     w.writerow(["지역", "기간", "계약 시작", "계약 끝", "비교 기간 시작", "비교 기간 끝", "가격 변동(%)",
                 "비교 단지·면적 수", "거래 건수", "신고가 건수"])
-    for c, n in FOCUS:
+    for c, n, *_ in FOCUS:
         for lb, _ in PERIODS:
             r = res[c][lb]
             w.writerow([n, lb, f"{r['시작']:%Y-%m-%d}", f"{r['끝']:%Y-%m-%d}", f"{r['직전시작']:%Y-%m-%d}",
@@ -339,12 +347,12 @@ def story_items(res, gen, data_end, limit=None, page=False):
     src = (f"국토교통부 아파트 매매 실거래가(공공데이터포털, {gen:%Y.%m.%d} 집계), 실거래가 리포트 계산. "
            "최근 계약은 신고기한(계약 후 30일)이 지나지 않아 건수·순위가 바뀔 수 있음")
     items = []  # (분류, 문장, 링크, 근거)
-    for c, city in FOCUS:
+    for c, city, sd, _ in FOCUS:
         rr = res[c]
         parts = [f"{lb} {pchg(rr[lb]['변동'])}" if pd.notna(rr[lb]["변동"]) else f"{lb} 표본 부족" for lb, _ in PERIODS]
         items.append((f"{city} 기간별 가격 변동",
                       f"{city} 아파트 거래가(같은 단지·같은 면적 비교)는 바로 앞 같은 기간과 비교해 {', '.join(parts)}였다.",
-                      f"r/{c}.html",
+                      f"r/{sd}.html",
                       "기간(계약일): " + ", ".join(f"{lb} {dspan(rr[lb]['시작'], rr[lb]['끝'])} vs "
                                                  f"{dspan(rr[lb]['직전시작'], rr[lb]['직전끝'])}"
                                                  f"({rr[lb]['비교']:,}곳 비교)" for lb, _ in PERIODS)
@@ -361,17 +369,16 @@ def story_items(res, gen, data_end, limit=None, page=False):
                 line += (f" 최근 1달({dspan(m['시작'], m['끝'])})로 넓히면 {t2['시군구']} {t2['법정동']} {t2['단지명']} "
                          f"전용 {t2['전용면적']:.2f}㎡({int(t2['층'])}층) {won(t2['거래금액'] / 10_000)}"
                          f"({t2['계약일자']:%-m월 %-d일} 계약)이 가장 비쌌다.")
-            items.append((f"{city} 최근 최고가 거래", line, f"r/{c}.html",
+            items.append((f"{city} 최근 최고가 거래", line, f"r/{sd}.html",
                           "해제·직거래를 뺀 신고 거래 중 거래금액 최고. 신고된 실거래가 그대로"))
         items.append((f"{city} 신고가 거래",
                       f"{city}에서 최근 2주일({dspan(w['시작'], w['끝'])}) 계약 {w['거래']:,}건 중 {w['신고가']:,}건, "
                       f"최근 1달({dspan(m['시작'], m['끝'])}) {m['거래']:,}건 중 {m['신고가']:,}건이 같은 단지·같은 면적의 "
-                      "이전 최고가를 넘었다.", f"r/{c}.html",
+                      "이전 최고가를 넘었다.", f"r/{sd}.html",
                       "해제·직거래 제외 신고 거래 기준. 신고가: 2023년 12월 이후 같은 단지·같은 면적의 이전 날짜 최고가를 "
                       "넘은 거래(이전 거래 2건 이상)"))
-    half = len(items) // 2  # 앞 절반 서울, 뒤 절반 대구 → 번갈아
-    if half and len(items) == half * 2:
-        items = [x for pair in zip(items[:half], items[half:]) for x in pair]
+    kinds = ["기간별 가격 변동", "최근 최고가 거래", "신고가 거래"]  # 같은 종류끼리 지역 순서대로
+    items = sorted(items, key=lambda x: next((i for i, k in enumerate(kinds) if x[0].endswith(k)), 9))
     story_items.last = [{"분류": h, "문장": txt, "근거": why, "출처": src, "링크": u, "안내": AI_NOTE}
                         for h, txt, u, why in items]
     shown = items[:limit] if limit else items
@@ -379,13 +386,13 @@ def story_items(res, gen, data_end, limit=None, page=False):
         f'<li><div class="st-head"><b>{e(h)}</b></div>'
         f'<p>{e(txt)}</p><p class="st-why"><b>근거</b> {e(why)}</p>'
         f'<a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u, why in shown)
-    sub = f"{gen:%Y년 %-m월 %-d일} 기준 · 서울·대구 아파트 실거래가를 매일 정리합니다."
+    sub = f"{gen:%Y년 %-m월 %-d일} 기준 · 서울·경기남부·부산·대구 아파트 실거래가를 매일 정리합니다."
     head = (f'<h1>주요 뉴스</h1><p class="sub">{sub}</p>' if page
             else f'<h2 id="news">주요 뉴스</h2><p class="sub">{sub}</p>')
     more = (f'<p class="more-in"><a href="news.html">주요 뉴스 {len(items)}건 전체 보기 →</a></p>'
             if limit and len(items) > limit else "")
     return (f'{head}<ol class="stories">{li}</ol>{more}'
-            f'<p class="sig-note"><b>출처</b> {e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>')
+            f'<p class="sig-note"><b>출처</b> {e(src)}<br>{e(FOCUS_NOTE)}<br><span class="ai-note">{AI_NOTE}</span></p>')
 
 
 def vol_bar(v, vmax):
@@ -881,8 +888,8 @@ def main():
     by_sido = {c: (short, st) for c, short, st in sido_rows}
     data_end = pd.Timestamp(meta["데이터_끝"])
     pres = {}
-    for c, _ in FOCUS:
-        fb = focus_base(c)
+    for c, _, sd, excl in FOCUS:
+        fb = focus_base(sd, excl)
         pres[c] = {lb: period_row(fb, data_end, d) for lb, d in PERIODS}
     body = [f'<section class="home"><p class="dateline">{gen:%Y년 %-m월 %-d일} 갱신 · 국토교통부 실거래가 '
             f'{meta["거래수"] / 1e4:,.0f}만 건, 전국 {n_sgg}개 시군구</p>'
@@ -891,26 +898,26 @@ def main():
             f'<b>{e(j)}</b>{"로" if j.endswith("류") else "으로"} 판정했습니다.</p>'
             '<p class="home-links"><a href="news.html">주요 뉴스</a><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
             '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
-            '<section class="signal"><h2>서울·대구 기간별 시세</h2><p class="sub">최근 2주일·1달·2달·3달 계약을 '
+            '<section class="signal"><h2>지역별 기간 시세</h2><p class="sub">최근 2주일·1달·2달·3달 계약을 '
             '바로 앞 같은 길이 기간과 같은 단지·같은 면적끼리 비교했습니다.</p>'
             f"{period_charts(pres)}"
             f'<details class="as-table"><summary>표로 보기</summary>{period_table(pres)}</details>'
-            f'<p class="sig-note">{PERIOD_BASIS}<br>최근 계약은 신고기한(계약 후 30일) 전이라 바뀔 수 있습니다.<br>'
+            f'<p class="sig-note">{PERIOD_BASIS}<br>{FOCUS_NOTE}.<br>최근 계약은 신고기한(계약 후 30일) 전이라 바뀔 수 있습니다.<br>'
             f'<span class="ai-note">{AI_NOTE}</span></p>'
-            '<p class="dl"><a href="data/seoul_daegu_period.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',
-            story_items(pres, gen, data_end, limit=2), site.ad()]
+            '<p class="dl"><a href="data/region_period.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',
+            story_items(pres, gen, data_end, limit=4), site.ad()]
     # 주요 뉴스 전용 페이지(메뉴)
     news_body = story_items(pres, gen, data_end, page=True)
     if news_body:
         site.write("news.html", f"주요 뉴스 · 아파트 실거래가에서 눈에 띄는 숫자 ({gen:%Y.%m.%d}) | 실거래가 리포트",
-                   "서울·대구 아파트의 기간별 가격 변동, 최근 최고가 거래, 신고가 거래를 매일 정리합니다.", news_body + site.ad(), [("전국", "index.html"), ("주요 뉴스", None)])
+                   "서울·경기남부·부산·대구 아파트의 기간별 가격 변동, 최근 최고가 거래, 신고가 거래를 매일 정리합니다.", news_body + site.ad(), [("전국", "index.html"), ("주요 뉴스", None)])
     (site.out / "data").mkdir(parents=True, exist_ok=True)
     # 주요 뉴스를 SNS 게시·숏폼 자동화가 읽을 수 있게 JSON으로도 남긴다
     base = site.base_url or "https://k-apts.co.kr"
     news = [dict(x, 링크=f"{base}/{x['링크']}") for x in getattr(story_items, "last", [])]
     (site.out / "data" / "news.json").write_text(json.dumps(
         {"날짜": f"{gen:%Y-%m-%d}", "뉴스": news}, ensure_ascii=False, indent=1), encoding="utf-8")
-    (site.out / "data" / "seoul_daegu_period.csv").write_text(period_csv(pres), encoding="utf-8")
+    (site.out / "data" / "region_period.csv").write_text(period_csv(pres), encoding="utf-8")
     if sm is not None:
         ln, src = news_lines("전국", nat_m, sm, last_all, gen)
         body.append(f"<h2>{sm:%-m월} 전국 아파트 매매 통계</h2><p class='sub'>시도·시군구별 거래량과 가격지수 비교는 "

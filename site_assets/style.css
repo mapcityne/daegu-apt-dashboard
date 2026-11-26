@@ -163,6 +163,8 @@ p, li { max-width: 46em; }
 .stories .st-head { display: block; }
 .stories .st-head b { font-size: .86rem; color: var(--blue); letter-spacing: .02em; }
 .stories p { margin: .3rem 0 .2rem; font-family: var(--serif); font-size: 1.04rem; line-height: 1.65; color: var(--ink); }
+.stories .st-why { font-family: var(--sans); font-size: .82rem; color: var(--muted); line-height: 1.55; margin: .1rem 0 .35rem; }
+.stories .st-why b { color: var(--muted); margin-right: .3rem; }
 .stories .st-more { font-size: .86rem; font-weight: 600; }
 .dl { margin: .4rem 0 0; font-size: .9rem; font-weight: 600; }
 .sigtbl tbody th, .sigtbl thead tr:first-child th:first-child { position: sticky; left: 0; z-index: 1; }

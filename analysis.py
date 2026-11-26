@@ -62,12 +62,19 @@ def window_label(ref, back, span=3):
 
 # ───────────────────────── 신고가 ─────────────────────────
 def mark_new_highs(df: pd.DataFrame) -> pd.DataFrame:
-    """같은 단지·면적에서 이전 모든 거래의 최고가를 넘어선 거래 = 신고가.
-    수집 기간 안에서의 최고가이며, 이전 거래가 2건 이상 있을 때만 판단한다."""
-    d = df.sort_values("계약일자").copy()
-    prev = d.groupby("평형키")["거래금액"].shift()
-    d["직전최고가"] = prev.groupby(d["평형키"]).cummax()
-    d["이전거래수"] = d.groupby("평형키").cumcount()
+    """같은 단지·면적에서 이전 날짜까지 모든 거래의 최고가를 넘어선 거래 = 신고가.
+    수집 기간 안에서의 최고가이며, 이전 날짜 거래가 2건 이상 있을 때만 판단한다.
+    같은 날 여러 건이면 서로를 비교하지 않는다(처리 순서에 따라 결과가 바뀌지 않게)."""
+    d = df.sort_values(["계약일자", "거래금액"], kind="mergesort").copy()
+    day = (d.groupby(["평형키", "계약일자"], observed=True)["거래금액"].agg(일최고="max", 일건수="size")
+           .reset_index().sort_values(["평형키", "계약일자"], kind="mergesort"))
+    prev = day.groupby("평형키", observed=True)["일최고"].shift()
+    day["직전최고가"] = prev.groupby(day["평형키"], observed=True).cummax()
+    day["이전거래수"] = day.groupby("평형키", observed=True)["일건수"].cumsum() - day["일건수"]
+    m = day.set_index(["평형키", "계약일자"])[["직전최고가", "이전거래수"]]
+    keys = pd.MultiIndex.from_arrays([d["평형키"], d["계약일자"]])
+    d["직전최고가"] = m["직전최고가"].reindex(keys).to_numpy()
+    d["이전거래수"] = m["이전거래수"].reindex(keys).to_numpy()
     d["신고가"] = (d["이전거래수"] >= 2) & (d["거래금액"] > d["직전최고가"])
     return d
 

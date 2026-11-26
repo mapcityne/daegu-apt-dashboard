@@ -195,11 +195,22 @@ def josa(word, a, b):
 
 
 def story_items(sg, gen, data_end, limit=None, page=False):
-    """기자가 관심 가질 만한 숫자를 자동으로 골라 기사체 문장으로 만든다.
-    잡음을 줄이려고 최근 3개월 거래가 100건 이상인 시군구만 본다."""
-    src = f"국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계), 실거래가 리포트 계산"
+    """주요 뉴스: SNS·숏폼에 그대로 쓰이므로 모든 문장은 집계값 그대로이고,
+    항목마다 기간·대상·계산 방법(근거)을 함께 적는다.
+    잡음을 줄이려고 최근 3개월(기준월 포함) 분석 대상 거래가 100건 이상인 시군구만 본다."""
+    ref = (data_end.to_period("M").to_timestamp() if data_end.day >= 25
+           else data_end.to_period("M").to_timestamp() - pd.DateOffset(months=1))  # analysis.ref_month와 같은 규칙
+    mo = lambda k: (ref - pd.DateOffset(months=k))
+    span = lambda a, b: (f"{mo(a):%Y년 %-m월}~{mo(b):%-m월}" if mo(a).year == mo(b).year
+                         else f"{mo(a):%Y년 %-m월}~{mo(b):%Y년 %-m월}")
+    now3, prev3 = span(2, 0), span(5, 3)
+    vol3, vol3_ago = span(3, 1), span(15, 13)
+    d30 = f"{data_end - pd.Timedelta(days=30):%Y년 %-m월 %-d일}~{data_end:%-m월 %-d일}"
+    src = (f"국토교통부 아파트 매매 실거래가(공공데이터포털, {gen:%Y.%m.%d} 집계), 실거래가 리포트 계산. "
+           f"{ref:%-m월} 계약분은 신고기한(계약 후 30일) 전이라 수치가 바뀔 수 있음")
+    base_note = "해제·직거래 제외"
     big = sg[sg["거래수_3개월"] >= 100].copy()
-    items = []
+    items = []  # (분류, 문장, 링크, 근거)
 
     def link(r):
         return f'r/{r["코드"]}.html'
@@ -208,44 +219,60 @@ def story_items(sg, gen, data_end, limit=None, page=False):
         d = big.dropna(subset=[col]).sort_values(col, ascending=asc)
         return d.head(3) if len(d) else None
 
+    idx_basis = (f"같은 단지·같은 면적 거래끼리 비교한 가격지수(실거래가 리포트 자체 계산, {base_note})의 "
+                 f"{now3} 평균과 {prev3} 평균 비교. 최근 3개월 거래 100건 이상 시군구 대상")
     t = top("3개월")
-    if t is not None:
+    if t is not None and t.iloc[0]["3개월"] > 0:
         r, rest = t.iloc[0], t.iloc[1:]
         tail = ", ".join(f"{x['nm']}({pct(x['3개월'])})" for _, x in rest.iterrows())
-        items.append(("가장 많이 오른 곳", f"최근 3개월 아파트값이 가장 많이 오른 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} 같은 단지 기준 "
-                      f"{abs(r['3개월']):.1f}% 올랐다." + (f" 이어 {tail} 순이었다." if tail else ""), link(r)))
+        items.append(("가격지수 상승 1위", f"{now3} 아파트 가격지수가 직전 3개월보다 가장 많이 오른 곳은 "
+                      f"{r['nm']}{josa(r['nm'], '으로', '로')} {abs(r['3개월']):.1f}% 올랐다."
+                      + (f" 이어 {tail} 순이었다." if tail else ""), link(r), idx_basis))
     t = top("3개월", True)
     if t is not None and t.iloc[0]["3개월"] < 0:
         r = t.iloc[0]
-        items.append(("가장 많이 내린 곳", f"같은 기간 가장 많이 내린 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} {abs(r['3개월']):.1f}% 떨어졌다.", link(r)))
+        items.append(("가격지수 하락 1위", f"같은 기간 가장 많이 내린 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} "
+                      f"{abs(r['3개월']):.1f}% 떨어졌다.", link(r), idx_basis))
     t = top("신고가비율")
     if t is not None:
         r = t.iloc[0]
-        items.append(("신고가 비중", f"최근 3개월 거래 중 신고가 비중이 가장 높은 곳은 {r['nm']}{josa(r['nm'], '으로', '로')}, "
-                      f"거래 {int(r['거래수_3개월']):,}건 중 {r['신고가비율']:.1f}%가 직전 최고가를 넘었다.", link(r)))
+        items.append(("신고가 비중 1위", f"{now3} 거래 중 신고가 비중이 가장 높은 곳은 {r['nm']}{josa(r['nm'], '으로', '로')}, "
+                      f"거래 {int(r['거래수_3개월']):,}건 중 {r['신고가비율']:.1f}%가 같은 단지·같은 면적의 "
+                      f"이전 최고가를 넘었다.", link(r),
+                      f"{now3} 계약({base_note}) 중 2023년 12월 이후 같은 단지·같은 면적의 이전 최고가를 넘은 거래 비율. "
+                      "이전 거래가 2건 이상인 경우만 신고가로 판단"))
     t = top("거래량증감")
     if t is not None and t.iloc[0]["거래량증감"] > 0:
         r = t.iloc[0]
-        items.append(("거래량 급증", f"거래량은 {r['nm']}{josa(r['nm'], '이', '가')} 가장 크게 늘었다. 최근 3개월 {int(r['거래수_3개월']):,}건으로 "
-                      f"1년 전 같은 기간보다 {r['거래량증감']:.0f}% 많다.", link(r)))
+        items.append(("거래량 증가 1위", f"{vol3} 거래량이 1년 전 같은 기간보다 가장 많이 늘어난 곳은 "
+                      f"{r['nm']}{josa(r['nm'], '으로', '로')} {r['거래량증감']:.0f}% 증가했다.", link(r),
+                      f"{vol3} 계약 건수와 {vol3_ago} 계약 건수 비교({base_note}). 신고가 덜 끝난 최근 달을 빼고 비교"))
     t = top("해제율")
     if t is not None:
         r = t.iloc[0]
-        items.append(("계약 해제", f"계약 해제 비율이 가장 높은 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} 최근 3개월 거래의 "
-                      f"{r['해제율']:.1f}%가 해제 신고됐다.", link(r)))
+        items.append(("계약 해제 비율 1위", f"{now3} 계약 가운데 해제 신고 비율이 가장 높은 곳은 "
+                      f"{r['nm']}{josa(r['nm'], '으로', '로')} {r['해제율']:.1f}%였다.", link(r),
+                      f"{now3} 계약으로 신고된 거래 중 해제 신고된 거래 비율(직거래 포함). 해제 신고가 늦게 들어오면 오를 수 있음"))
     t = top("직거래율")
     if t is not None:
         r = t.iloc[0]
-        items.append(("직거래 비중", f"중개업소를 거치지 않은 직거래 비중은 {r['nm']}{josa(r['nm'], '이', '가')} {r['직거래율']:.1f}%로 가장 높았다.",
-                      link(r)))
+        items.append(("직거래 비중 1위", f"{now3} 계약 가운데 중개업소를 거치지 않은 직거래 비중은 "
+                      f"{r['nm']}{josa(r['nm'], '이', '가')} {r['직거래율']:.1f}%로 가장 높았다.", link(r),
+                      f"{now3} 계약(해제 제외) 중 거래유형이 '직거래'로 신고된 거래 비율"))
+    # 최고가 거래는 요약 목록이 아니라 원거래 전체에서 직접 찾는다(단지별 1건만 남긴 목록은 최근 거래를 놓칠 수 있음)
     try:
-        tt = pd.read_parquet(OUT_DIR / "nat_top_trades.parquet")
-        tt = tt[tt["계약일자"] >= data_end - pd.Timedelta(days=30)].sort_values("거래금액_억", ascending=False)
-        if len(tt):
-            r = tt.iloc[0]
-            items.append(("최근 한 달 최고가", f"최근 한 달 전국 최고가 거래는 {SIDO_SHORT.get(str(r['시도코드']), '')} "
-                          f"{r['시군구']} {r['법정동']} {r['단지명']} 전용 {r['전용면적']:.0f}㎡{josa('㎡', '으로', '로')} "
-                          f"{won(r['거래금액_억'])}에 팔렸다({r['계약일자']:%-m월 %-d일} 계약).", f"r/{r['시도코드']}.html"))
+        cols = ["시도코드", "시군구", "법정동", "단지명", "계약일자", "거래금액", "전용면적", "층", "거래유형", "해제여부"]
+        tr = pd.concat(pd.read_parquet(f, columns=cols) for f in sorted(OUT_DIR.glob("trades_*.parquet")))
+        tr["계약일자"] = pd.to_datetime(tr["계약일자"])
+        tr = tr[(tr["해제여부"] != "O") & (tr["거래유형"] != "직거래")
+                & (tr["계약일자"] >= data_end - pd.Timedelta(days=30)) & (tr["계약일자"] <= data_end)]
+        if len(tr):
+            r = tr.sort_values(["거래금액", "계약일자"], ascending=[False, True]).iloc[0]
+            items.append(("최근 30일 최고가 거래", f"{d30} 계약된 아파트 중 전국 최고가는 "
+                          f"{SIDO_SHORT.get(str(r['시도코드']), '')} {r['시군구']} {r['법정동']} {r['단지명']} "
+                          f"전용 {r['전용면적']:.2f}㎡({int(r['층'])}층)로 {won(r['거래금액'] / 10_000)}이었다"
+                          f"({r['계약일자']:%-m월 %-d일} 계약).", f"r/{r['시도코드']}.html",
+                          f"{d30} 계약({base_note}) 전체 중 거래금액 최고. 신고된 실거래가 그대로"))
     except Exception:
         pass
     try:
@@ -254,24 +281,28 @@ def story_items(sg, gen, data_end, limit=None, page=False):
         if len(nh):
             by = nh["시도코드"].astype(str).value_counts()
             lead = ", ".join(f"{SIDO_SHORT.get(c, c)} {n:,}건" for c, n in by.head(3).items())
-            items.append(("신고가 거래 건수", f"최근 30일 전국에서 직전 최고가를 넘은 거래는 {len(nh):,}건이었다. "
-                          f"지역별로는 {lead} 순으로 많았다.", "today.html"))
+            items.append(("최근 30일 신고가 거래", f"{d30} 계약 중 같은 단지·같은 면적의 이전 최고가를 넘은 거래는 "
+                          f"전국 {len(nh):,}건이었다. 지역별로는 {lead} 순으로 많았다.", "today.html",
+                          f"{d30} 계약({base_note}) 중 2023년 12월 이후 같은 단지·같은 면적의 이전 최고가를 넘은 거래 수. "
+                          "이전 거래가 2건 이상인 경우만 집계"))
     except Exception:
         pass
-    story_items.last = [{"분류": h, "문장": txt, "링크": u, "자료": src, "안내": AI_NOTE} for h, txt, u in items]
+    story_items.last = [{"분류": h, "문장": txt, "근거": why, "출처": src, "링크": u, "안내": AI_NOTE}
+                        for h, txt, u, why in items]
     if not items:
         return ""
     shown = items[:limit] if limit else items
     li = "".join(
         f'<li><div class="st-head"><b>{e(h)}</b></div>'
-        f'<p>{e(txt)}</p><a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u in shown)
+        f'<p>{e(txt)}</p><p class="st-why"><b>근거</b> {e(why)}</p>'
+        f'<a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u, why in shown)
     sub = f"{gen:%Y년 %-m월 %-d일} 기준 · 최근 3개월 거래 100건 이상인 시군구에서 눈에 띄는 숫자를 매일 골랐습니다."
     head = (f'<h1>주요 뉴스</h1><p class="sub">{sub}</p>' if page
             else f'<h2 id="news">주요 뉴스</h2><p class="sub">{sub}</p>')
     more = (f'<p class="more-in"><a href="news.html">주요 뉴스 {len(items)}건 전체 보기 →</a></p>'
             if limit and len(items) > limit else "")
     return (f'{head}<ol class="stories">{li}</ol>{more}'
-            f'<p class="sig-note">자료: {e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>')
+            f'<p class="sig-note"><b>출처</b> {e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>')
 
 
 def sig_csv(rows) -> str:

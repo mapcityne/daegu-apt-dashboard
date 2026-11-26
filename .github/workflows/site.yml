@@ -45,7 +45,7 @@ jobs:
           restore-keys: seen-
       - name: 사이트 생성
         env:
-          GA_ID: ${{ vars.GA_ID }}
+          GA_ID: ${{ vars.GA_ID || 'G-FTBCVET1V3' }}
           NAVER_SITE_VERIFICATION: ${{ vars.NAVER_SITE_VERIFICATION }}
           BING_SITE_VERIFICATION: ${{ vars.BING_SITE_VERIFICATION }}
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}

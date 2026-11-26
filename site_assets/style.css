@@ -151,12 +151,16 @@ p, li { max-width: 46em; }
 @media print { .sigtbl .sig-more { display: table-row; } .sig-toggle { display: none; } }
 @media (max-width: 520px) { .card { padding: 1.2rem 1.1rem; } .sigtbl th, .sigtbl td { padding: .5rem .55rem; } }
 
+/* AI 참고 문구 */
+.ai-note { color: var(--muted); font-size: .8rem; }
+.ai-note::before { content: "※ "; }
+
 /* 기사 거리 */
 .stories { list-style: none; counter-reset: st; padding: 0; margin: .4rem 0 0; border-top: 1px solid var(--ink); }
 .stories li { counter-increment: st; padding: .9rem 0 .8rem 2.2rem; border-bottom: 1px solid var(--line); position: relative; }
 .stories li::before { content: counter(st); position: absolute; left: 0; top: .9rem; font-family: var(--serif);
   font-size: 1.3rem; color: var(--muted); }
-.stories .st-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.stories .st-head { display: block; }
 .stories .st-head b { font-size: .86rem; color: var(--blue); letter-spacing: .02em; }
 .stories p { margin: .3rem 0 .2rem; font-family: var(--serif); font-size: 1.04rem; line-height: 1.65; color: var(--ink); }
 .stories .st-more { font-size: .86rem; font-weight: 600; }

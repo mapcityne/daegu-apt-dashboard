@@ -63,6 +63,7 @@ def table(head, rows, cls="") -> str:
     return f'<div class="tbl"><table class="{cls}"><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
+AI_NOTE = "AI를 활용한 통계 분석 결과로, 참고용입니다."
 SIG_NOTE = ("가격지수는 같은 단지·같은 면적끼리 비교한 변동률입니다. 오른 단지: 1년 전보다 오른 단지 비율 · "
             "거래량: 전년 같은 3개월 대비 · 신고가 비중: 최근 3개월 거래 중")
 
@@ -89,7 +90,7 @@ def sigtable(rows, more=()) -> str:
             '<tr><th rowspan="2">지역</th><th colspan="3">가격지수 변동</th><th colspan="3">시장 분위기</th>'
             '<th rowspan="2">판정</th></tr>'
             '<tr><th>3개월</th><th>6개월</th><th>1년</th><th>오른 단지</th><th>거래량</th><th>신고가 비중</th></tr>'
-            f'</thead><tbody>{body}</tbody></table></div>{btn}<p class="sig-note">{SIG_NOTE}</p></div>')
+            f'</thead><tbody>{body}</tbody></table></div>{btn}<p class="sig-note">{SIG_NOTE}<br><span class="ai-note">{AI_NOTE}</span></p></div>')
 
 
 def badge(j):
@@ -181,7 +182,7 @@ def quote_card(m, lines, src, more=""):
     text = " ".join(lines) + f" ({src})"
     return (f'<div class="card quote"><div class="q-head"><b>{m:%Y년 %-m월} 요약 · 기사 인용용</b>'
             f'<button type="button" class="copy" data-copy="{e(text)}">문장 복사</button></div>'
-            + "".join(f"<p>{e(x)}</p>" for x in lines) + f'<p class="src">{e(src)}</p>{more}</div>')
+            + "".join(f"<p>{e(x)}</p>" for x in lines) + f'<p class="src">{e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>{more}</div>')
 
 
 def josa(word, a, b):
@@ -259,15 +260,14 @@ def story_items(sg, gen, data_end):
                           f"지역별로는 {lead} 순으로 많았다.", "today.html"))
     except Exception:
         pass
+    story_items.last = [{"분류": h, "문장": txt, "링크": u, "자료": src, "안내": AI_NOTE} for h, txt, u in items]
     if not items:
         return ""
     li = "".join(
-        f'<li><div class="st-head"><b>{e(h)}</b><button type="button" class="copy" '
-        f'data-copy="{e(txt + " (" + src + ")")}">문장 복사</button></div>'
+        f'<li><div class="st-head"><b>{e(h)}</b></div>'
         f'<p>{e(txt)}</p><a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u in items)
-    return (f'<h2 id="story">이번 주 기사 거리</h2><p class="sub">최근 3개월 거래 100건 이상인 시군구 기준으로 눈에 띄는 '
-            f'숫자를 매일 자동으로 골랐습니다. 문장은 그대로 인용할 수 있습니다.</p>'
-            f'<ol class="stories">{li}</ol><p class="sig-note">자료: {e(src)}</p>')
+    return (f'<h2 id="news">주요 뉴스</h2><p class="sub">최근 3개월 거래 100건 이상인 시군구 기준, 매일 갱신합니다.</p>'
+            f'<ol class="stories">{li}</ol><p class="sig-note">자료: {e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>')
 
 
 def sig_csv(rows) -> str:
@@ -398,7 +398,7 @@ class Site:
 <p>국토교통부 아파트 매매 실거래가를 매일 새벽 받아 전국 시군구의 가격 흐름을 계산합니다.</p>
 <p>실거래가: 국토교통부(공공데이터포털). 미분양·주택 준공: 국토교통부, 인구 이동: 국가데이터처(KOSIS).
 행정구역 경계: 통계청 SGIS, vuski/admdongkor(CC BY 4.0).</p>
-<p>이 사이트는 참고 자료이며 투자 판단의 근거로 정확성을 보증하지 않습니다.</p>
+<p>통계 분석에 AI를 활용했습니다. 이 사이트는 참고 자료이며 투자 판단의 근거로 정확성을 보증하지 않습니다.</p>
 <p class="links sido">{"".join(f'<a href="{up}r/{c}.html">{n}</a>' for c, n in SIDO_SHORT.items())}</p>
 <p class="links"><a href="{up}about.html">기준 안내</a><a href="{up}privacy.html">개인정보처리방침</a>
 <a href="{REPO_URL}/issues">문의</a></p>
@@ -790,6 +790,11 @@ def main():
             '<p class="dl"><a href="data/sido_signal.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',
             story_items(sg, gen, pd.Timestamp(meta["데이터_끝"])), site.ad()]
     (site.out / "data").mkdir(parents=True, exist_ok=True)
+    # 주요 뉴스를 SNS 게시·숏폼 자동화가 읽을 수 있게 JSON으로도 남긴다
+    base = site.base_url or "https://k-apts.co.kr"
+    news = [dict(x, 링크=f"{base}/{x['링크']}") for x in getattr(story_items, "last", [])]
+    (site.out / "data" / "news.json").write_text(json.dumps(
+        {"날짜": f"{gen:%Y-%m-%d}", "뉴스": news}, ensure_ascii=False, indent=1), encoding="utf-8")
     (site.out / "data" / "sido_signal.csv").write_text(
         sig_csv([("전국", nat)] + [(by_sido[c][0], by_sido[c][1]) for c in SIDO_SHORT if c in by_sido]),
         encoding="utf-8")

@@ -1,4 +1,4 @@
-/* k-apts 정적 사이트 — 데이터 리포트 톤: 본문 Pretendard, 제목 Noto Serif KR, 먹색·남색 바탕에 절제된 파랑 강조.
+/* 실거래가 리포트 정적 사이트 — 데이터 리포트 톤: 본문 Pretendard, 제목 Noto Serif KR, 먹색·남색 바탕에 절제된 파랑 강조.
    상승 빨강·하락 파랑(국내 관례), 카드는 얕은 그림자 대신 가는 선으로 구분. */
 :root {
   --bg: #F6F5F1; --card: #FFFFFF; --ink: #0E1A2E; --text: #273244; --muted: #6A7180; --line: #E3E1DA; --line-2: #EEECE6;

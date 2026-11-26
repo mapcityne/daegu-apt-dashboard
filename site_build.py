@@ -174,7 +174,7 @@ def news_lines(name, d, m, last, gen):
     if r["상태"] == "잠정":
         dl = m + pd.offsets.MonthEnd(0) + pd.Timedelta(days=30)
         note = f", {m:%-m월}분은 신고기한({dl:%-m월 %-d일}) 전 잠정치"
-    src = f"자료: 국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계{note}), k-apts 계산"
+    src = f"자료: 국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계{note}), 실거래가 리포트 계산"
     return out, src
 
 
@@ -199,7 +199,7 @@ def josa(word, a, b):
 def story_items(sg, gen, data_end):
     """기자가 관심 가질 만한 숫자를 자동으로 골라 기사체 문장으로 만든다.
     잡음을 줄이려고 최근 3개월 거래가 100건 이상인 시군구만 본다."""
-    src = f"국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계), k-apts 계산"
+    src = f"국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계), 실거래가 리포트 계산"
     big = sg[sg["거래수_3개월"] >= 100].copy()
     items = []
 
@@ -373,7 +373,7 @@ class Site:
 {robots}<link rel="canonical" href="{url}">
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}">
 <meta property="og:type" content="website"><meta property="og:url" content="{url}">
-<meta property="og:site_name" content="k-apts"><meta property="og:locale" content="ko_KR">
+<meta property="og:site_name" content="실거래가 리포트"><meta property="og:locale" content="ko_KR">
 <meta property="og:image" content="{self.base_url}/og.png"><meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0E1A2E">{self.verify}
@@ -387,14 +387,14 @@ class Site:
 <header class="top"><div class="shell bar">
 <button type="button" class="navbtn" aria-label="메뉴 열기" aria-controls="side" aria-expanded="false"
  onclick="kNav(this)"><span></span><span></span><span></span></button>
-<a class="logo" href="{up}index.html">{MARK}<span>k-apts<small>실거래가 리포트</small></span></a>
+<a class="logo" href="{up}index.html">{MARK}<span>실거래가 리포트</span></a>
 <form class="search" role="search" onsubmit="return kGo(this)"><input name="q" list="k-regions" autocomplete="off"
  placeholder="지역 검색 (예: 대구 수성구)" aria-label="지역 검색"><button>검색</button></form>
 </div></header>
 <div class="shell layout">{self.side(path, up)}<div class="scrim" onclick="kNav()"></div>
 <main class="content">{crumb}{body}</main></div>
 <footer class="foot"><div class="shell">
-<div class="brand">{MARK}<span>k-apts</span></div>
+<div class="brand">{MARK}<span>실거래가 리포트</span></div>
 <p>국토교통부 아파트 매매 실거래가를 매일 새벽 받아 전국 시군구의 가격 흐름을 계산합니다.</p>
 <p>실거래가: 국토교통부(공공데이터포털). 미분양·주택 준공: 국토교통부, 인구 이동: 국가데이터처(KOSIS).
 행정구역 경계: 통계청 SGIS, vuski/admdongkor(CC BY 4.0).</p>
@@ -438,10 +438,10 @@ class Site:
     def jsonld(self, path, crumbs):
         """검색 결과에 경로(전국 › 시도 › 시군구)가 보이도록 BreadcrumbList, 첫 화면엔 WebSite."""
         if path == "index.html":
-            org = {"@type": "Organization", "@id": f"{self.base_url}/#org", "name": "k-apts",
+            org = {"@type": "Organization", "@id": f"{self.base_url}/#org", "name": "실거래가 리포트",
                    "url": f"{self.base_url}/", "logo": f"{self.base_url}/logo-mark.png"}
             d = {"@context": "https://schema.org", "@graph": [org, {
-                "@type": "WebSite", "name": "k-apts", "alternateName": "k-apts 전국 아파트 실거래가",
+                "@type": "WebSite", "name": "실거래가 리포트", "alternateName": "실거래가 리포트 전국 아파트 실거래가",
                 "url": f"{self.base_url}/", "inLanguage": "ko", "publisher": {"@id": f"{self.base_url}/#org"}}]}
         elif crumbs:
             d = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
@@ -699,7 +699,7 @@ def main():
                         + briefing_html(ss, row(sido), "법정동", short) + "</div>")
             body.append(sibling_section(short, code, sib))
             body.append(site.coupang)
-            site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | k-apts",
+            site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | 실거래가 리포트",
                        page_desc(name, ss, tp.iloc[0] if len(r_sgg) else None, len(r_sgg), ref,
                                  ("최근 한 달 실거래가 순위 10, " + ("84㎡·59㎡ 단지별 시세, " if sz else "")
                                   + "1년 전보다 많이 오른 아파트") if len(r_sgg)
@@ -739,7 +739,7 @@ def main():
         body.append(f"<h2 id='brief'>{e(short)} 시장 브리핑</h2><div class='card brief'>" + briefing_html(s, nat, "시군구", None)
                     + "</div>")
         body.append(site.coupang)
-        site.write(f"r/{sido}.html", f"{short} 아파트 실거래가 순위와 시군구별 시세 | k-apts",
+        site.write(f"r/{sido}.html", f"{short} 아파트 실거래가 순위와 시군구별 시세 | 실거래가 리포트",
                    page_desc(short, s, firsts[0][2] if firsts else None, len(recent), ref,
                              "시군구별 1위 거래와 가격 흐름, 많이 오른 아파트", firsts[0][1] if firsts else ""),
                    "".join(body), [("전국", "index.html"), (short, None)])
@@ -820,17 +820,17 @@ def main():
     body.append("<h2>이번 달 전국 시장 이야기</h2><div class='card brief'>" + briefing_html(nat, None, "시도", None)
                 + "</div>")
     body.append(site.coupang)
-    site.write("index.html", "k-apts 전국 아파트 실거래가 순위와 시세 흐름",
+    site.write("index.html", "전국 아파트 실거래가 순위와 시세 흐름 | 실거래가 리포트",
                f"전국 시군구 아파트 실거래가 순위, 1년 전보다 많이 오른 아파트, 지역별 상승·하락 판정을 매일 갱신합니다. "
                f"{ref:%Y년 %m월} 기준 전국 동일단지 가격지수 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}.",
                "".join(body))
 
-    site.write("about.html", "기준 안내 | k-apts", "k-apts가 숫자를 만드는 방법과 데이터 출처.", ABOUT,
+    site.write("about.html", "기준 안내 | 실거래가 리포트", "실거래가 리포트가 숫자를 만드는 방법과 데이터 출처.", ABOUT,
                [("전국", "index.html"), ("기준 안내", None)])
     privacy = PRIVACY.replace("<h2>접속 기록</h2>", GA_NOTE + "<h2>접속 기록</h2>") if site.ga else PRIVACY
-    site.write("privacy.html", "개인정보처리방침 | k-apts", "k-apts 개인정보처리방침.", privacy,
+    site.write("privacy.html", "개인정보처리방침 | 실거래가 리포트", "실거래가 리포트 개인정보처리방침.", privacy,
                [("전국", "index.html"), ("개인정보처리방침", None)])
-    site.write("404.html", "페이지를 찾을 수 없습니다 | k-apts", "", '<h1>페이지를 찾을 수 없습니다</h1>'
+    site.write("404.html", "페이지를 찾을 수 없습니다 | 실거래가 리포트", "", '<h1>페이지를 찾을 수 없습니다</h1>'
                '<p><a href="index.html">전국 첫 화면으로 가기</a></p>', index=False)
     site.finish()
     print(f"완료: {len(site.pages)}쪽 → {out}")
@@ -890,7 +890,7 @@ def build_stats_page(site, nat_m, sido_month, sgg_month, m, last, gen, stamp):
     desc = (f"{m:%Y년 %-m월} 전국 아파트 매매 {int(nat['거래량']):,}건(전월 대비 {pct(nat['거래량_전월'], 0)}, "
             f"전년 동월 대비 {pct(nat['거래량_전년'], 0)}). 시도·시군구별 거래량과 중위 거래가, 가격지수 변동을 "
             "기사 인용용 문장과 함께 정리했습니다.")
-    site.write("stats.html", f"{m:%Y년 %-m월} 아파트 매매 월간 통계 · 시도·시군구 거래량 | k-apts", desc,
+    site.write("stats.html", f"{m:%Y년 %-m월} 아파트 매매 월간 통계 · 시도·시군구 거래량 | 실거래가 리포트", desc,
                "".join(body), [("전국", "index.html"), ("월간 통계", None)])
 
 
@@ -925,7 +925,7 @@ def build_today_page(site, fresh, by_sido, counts, gen, last):
                 parts.append(f'<h2 id="s{c}"><a href="r/{c}.html">{SIDO_SHORT[c]}</a> 시군구별 최고 거래 '
                              f'<small class="muted">{len(new):,}건</small></h2>'
                              + table(FRESH_HEAD_SGG, fresh_rows(new, True, cnt)))
-        title = f"오늘 공개된 아파트 실거래가 · 시군구별 최고 ({gen:%Y.%m.%d}) | k-apts"
+        title = f"오늘 공개된 아파트 실거래가 · 시군구별 최고 ({gen:%Y.%m.%d}) | 실거래가 리포트"
         desc = (f"{gen:%Y년 %-m월 %-d일} 새로 공개된 전국 아파트 매매 실거래 {total:,}건을 시도·시군구별 최고가로 "
                 "정리했습니다. 매일 새벽 국토교통부 실거래가 갱신분 기준.")
     else:
@@ -940,7 +940,7 @@ def build_today_page(site, fresh, by_sido, counts, gen, last):
                 rc = rec.groupby("시군구코드").size().to_dict()
                 parts.append(f'<h2 id="s{c}"><a href="r/{c}.html">{SIDO_SHORT[c]}</a> 시군구별 최고 거래</h2>'
                              + table(FRESH_HEAD_SGG[:-1] + ["3일 거래"], fresh_rows(rec, True, rc)))
-        title = "최근 공개된 아파트 실거래가 · 시군구별 최고 | k-apts"
+        title = "최근 공개된 아파트 실거래가 · 시군구별 최고 | 실거래가 리포트"
         desc = "최근 계약된 전국 아파트 매매 실거래를 시도·시군구별 최고가로 정리했습니다. 매일 새벽 갱신."
     body = (f'<h1>오늘 공개된 아파트 실거래가</h1><p class="sub">아파트 매매는 계약 후 30일 안에 신고하고, '
             "신고된 거래는 국토교통부 실거래가 자료로 공개됩니다. 신고일은 공개되지 않아, 매일 새벽 갱신 때 처음 나타난 거래를 '새로 공개된 거래'로 "
@@ -1000,7 +1000,7 @@ GA_NOTE = """<h2>방문 통계</h2>
 """
 
 PRIVACY = """<h1>개인정보처리방침</h1>
-<p>k-apts(이하 '사이트')는 이용자의 개인정보를 직접 수집하지 않습니다. 회원 가입, 로그인, 게시판, 문의 양식이 없습니다.</p>
+<p>실거래가 리포트(이하 '사이트')는 이용자의 개인정보를 직접 수집하지 않습니다. 회원 가입, 로그인, 게시판, 문의 양식이 없습니다.</p>
 <h2>쿠키와 광고</h2>
 <ul><li>사이트에는 Google AdSense, 카카오 애드핏, 쿠팡 파트너스 광고가 표시될 수 있습니다.</li>
 <li>Google을 포함한 제3자 광고 사업자는 쿠키를 사용해 이용자의 이 사이트 및 다른 사이트 방문 기록을 바탕으로

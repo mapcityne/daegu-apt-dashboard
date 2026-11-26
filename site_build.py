@@ -3,7 +3,7 @@
 data/out 집계 결과로 전국·시도·시군구 페이지를 HTML로 만든다. 매일 데이터 갱신 뒤 실행.
     python site_build.py [--out site] [--base-url https://k-apts.kr]
 
-광고 설정은 ads.py 참고 (환경변수). 대화형 분석은 Streamlit 앱으로 연결한다.
+광고 설정은 ads.py 참고 (환경변수).
 """
 import argparse
 import html
@@ -24,7 +24,6 @@ from common import OUT_DIR, enrich
 from regions import SIDO_SHORT, regions
 
 BASE = Path(__file__).resolve().parent
-APP_URL = "https://k-apts.streamlit.app"
 MARK = ('<svg class="mark" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">'
         '<rect width="32" height="32" rx="9" fill="#3B6FD8"/><rect x="7" y="17" width="5" height="8" rx="1" fill="#fff"/>'
         '<rect x="13.5" y="12" width="5" height="13" rx="1" fill="#fff"/><rect x="20" y="7" width="5" height="18" rx="1" '
@@ -301,7 +300,7 @@ class Site:
 <p>이 사이트는 참고 자료이며 투자 판단의 근거로 정확성을 보증하지 않습니다.</p>
 <p class="links sido">{"".join(f'<a href="{up}r/{c}.html">{n}</a>' for c, n in SIDO_SHORT.items())}</p>
 <p class="links"><a href="{up}about.html">기준 안내</a><a href="{up}privacy.html">개인정보처리방침</a>
-<a href="{REPO_URL}/issues">문의</a><a href="{APP_URL}">대화형 분석 앱</a></p>
+<a href="{REPO_URL}/issues">문의</a></p>
 </div></footer>
 <datalist id="k-regions"></datalist><script>window.K_UP="{up}"</script><script src="{up}regions.js" defer></script>{COPY_JS}
 </body></html>"""
@@ -332,7 +331,7 @@ class Site:
                        f'<li>{link(f"r/{sido}.html", f"{short} 전체", "all")}</li>{kids}</ul></details></li>')
         out.append('</ul><p class="side-h">안내</p><ul class="tree">'
                    f'<li>{link("about.html", "기준 안내")}</li><li>{link("privacy.html", "개인정보처리방침")}</li>'
-                   f'<li><a class="ext" href="{APP_URL}">대화형 분석 앱 ↗</a></li></ul></nav></aside>')
+                   '</ul></nav></aside>')
         return "".join(out)
 
     def jsonld(self, path, crumbs):
@@ -599,8 +598,6 @@ def main():
                         + briefing_html(ss, row(sido), "법정동", short) + "</div>")
             body.append(sibling_section(short, code, sib))
             body.append(site.coupang)
-            body.append(f'<p class="more"><a class="btn" href="{APP_URL}/region?r={code}">'
-                        f"{e(name)} 단지별 거래 흐름 자세히 보기</a></p>")
             site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | k-apts",
                        page_desc(name, ss, tp.iloc[0] if len(r_sgg) else None, len(r_sgg), ref,
                                  ("최근 한 달 실거래가 순위 10, " + ("84㎡·59㎡ 단지별 시세, " if sz else "")
@@ -663,7 +660,6 @@ def main():
 
     # ── 첫 화면
     j = nat.get("판정", "판단 보류")
-    word = {"상승": "오르는 중", "하락": "내리는 중", "보합": "숨 고르는 중"}.get(j, "판단 보류")
     sg = stats[stats["단계"] == "시군구"].copy()
     sg["nm"] = sg["코드"].map(lambda c: f"{SIDO_SHORT.get(c[:2], '')} {sname.get(c, c)}")
     up = sg[sg["판정"] == "상승"].sort_values("3개월", ascending=False).head(12)
@@ -676,15 +672,13 @@ def main():
             for _, r in df.iterrows()) + "</div>"
 
     n_sgg = int((stats["단계"] == "시군구").sum())
-    body = [f'<section class="home"><span class="pill">국토교통부 실거래가 기반 · 매일 새벽 갱신</span>'
-            f'<h1>전국 아파트값,<br>지금은 <em>{word}</em></h1><p class="lead">{ref:%Y년 %m월} 기준, '
-            f"같은 단지끼리 비교한 가격지수는 최근 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}입니다. "
-            "지역마다 오르는지 내리는지, 어디서 얼마에 거래됐는지 정리해 드립니다.</p>"
-            '<div class="cta"><a class="btn" href="today.html">오늘 공개된 거래 보기</a>'
-            '<a class="btn ghost" href="stats.html">월간 통계</a><a class="btn ghost" href="r/27.html">대구 실거래가 순위</a></div>'
-            f'<div class="stats"><div><b>{meta["거래수"] / 1e4:,.0f}만 건</b><span>분석한 실거래</span></div>'
-            f'<div><b>{n_sgg}곳</b><span>전국 시군구</span></div><div><b>매일</b><span>새벽 자동 갱신</span></div>'
-            "</div></section>",
+    body = [f'<section class="home"><p class="dateline">{gen:%Y년 %-m월 %-d일} 갱신 · 국토교통부 실거래가 '
+            f'{meta["거래수"] / 1e4:,.0f}만 건, 전국 {n_sgg}개 시군구</p>'
+            f"<h1>전국 아파트값 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}</h1>"
+            f'<p class="lead">{ref:%Y년 %-m월} 기준, 같은 단지끼리 비교한 가격지수입니다. 최근 3개월 흐름은 '
+            f'<b>{e(j)}</b>{"로" if j.endswith("류") else "으로"} 판정했습니다.</p>'
+            '<p class="home-links"><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
+            '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
             f'<section class="card signal"><div class="signal-head"><h2>전국 시장 신호</h2>{badge(j)}</div>'
             f"{gauge(nat.get('3개월'))}{figures(nat)}</section>", site.ad()]
     if sm is not None:

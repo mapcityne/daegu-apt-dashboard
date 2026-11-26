@@ -219,11 +219,40 @@ def load_sido(sido, ref):
     t = t[~t["해제"] & (t["거래유형"] != "직거래")]
     last = pd.Timestamp(t["계약일자"].max())
     recent = t[t["계약일자"] > last - pd.Timedelta(days=30)]
+    q3 = t[t["계약일자"] > last - pd.Timedelta(days=90)]
     pc = A.price_changes(t[t["계약월"] <= ref], ref)
     pc = pc[(pc["최근_건수"] >= 2) & (pc["1년전_건수"] >= 2)].dropna(subset=["1년전대비"]).copy()
     pc["구간"] = pd.cut(pc["1년전대비"], [10, 20, 30, np.inf], right=False,
                       labels=["10~20%", "20~30%", "30% 이상"]).astype(str)
-    return recent, pc, last
+    return recent, pc, last, q3
+
+
+SIZES = [("84", "전용 84㎡ 안팎(이른바 국민평형)", 80, 86), ("59", "전용 59㎡ 안팎", 55, 62)]
+
+
+def size_section(q3, name, last):
+    """많이 찾는 면적(84㎡·59㎡)의 최근 3개월 단지별 중위 거래가 순위."""
+    out = []
+    for key, label, lo, hi in SIZES:
+        g = q3[(q3["전용면적"] >= lo) & (q3["전용면적"] < hi)]
+        if len(g) < 5:
+            continue
+        agg = (g.groupby("단지키").agg(단지명=("단지명", "first"), 법정동=("법정동", "first"),
+                                     준공=("건축년도", "max"), 중위=("거래금액_억", "median"),
+                                     최저=("거래금액_억", "min"), 최고=("거래금액_억", "max"),
+                                     건수=("거래금액_억", "size"))
+               .sort_values(["중위", "건수"], ascending=False).head(10))
+        rows = [(i + 1, e(r.단지명), f"<b>{eok(r.중위)}</b>",
+                 eok(r.최저) if r.건수 > 1 else "-", eok(r.최고) if r.건수 > 1 else "-", f"{r.건수}건",
+                 e(r.법정동), int(r.준공) if pd.notna(r.준공) else "-") for i, r in enumerate(agg.itertuples())]
+        out.append(f'<h3 id="s{key}">{label}</h3><p class="sub">거래 {len(g):,}건, 전체 중위 거래가 '
+                   f'{eok(g["거래금액_억"].median())}. 단지별 중위 거래가가 높은 10곳입니다.</p>'
+                   + table(["순위", "단지", "중위", "최저", "최고", "거래", "법정동", "준공"], rows, "rank"))
+    if not out:
+        return ""
+    return (f"<h2>{e(name)} 많이 찾는 면적별 시세</h2><p class='sub'>계약일 "
+            f"{last - pd.Timedelta(days=89):%Y.%m.%d}~{last:%Y.%m.%d} 최근 3개월 거래(해제·직거래 제외)로 "
+            "같은 면적대끼리 비교했습니다.</p>" + "".join(out))
 
 
 def top10(g):
@@ -347,7 +376,7 @@ def main():
     for sido in SIDO_SHORT:
         if not (OUT_DIR / f"trades_{sido}.parquet").exists():
             continue
-        recent, pc, last = load_sido(sido, ref)
+        recent, pc, last, q3 = load_sido(sido, ref)
         s = row(sido)
         short = SIDO_SHORT[sido]
         subs = reg[reg["sidocd"] == sido].sort_values("sggcd")
@@ -369,6 +398,8 @@ def main():
                 body.append(f"<h2>최근 한 달 실거래가 순위</h2><p class='sub'>계약일 "
                             f"{last - pd.Timedelta(days=29):%Y.%m.%d}~{last:%Y.%m.%d}, 거래 {len(r_sgg):,}건 중 "
                             "단지별 가장 비싼 거래 10곳입니다(직거래 제외).</p>" + rank_table(tp))
+            sz = size_section(q3[q3["시군구코드"] == code], name, last)
+            body.append(sz)
             body.append(band_section(p_sgg, name, True))
             body.append(f"<h2>{e(rg['sggnm'])} 시장 브리핑</h2><div class='card brief'>"
                         + briefing_html(ss, row(sido), "법정동", short) + "</div>")
@@ -378,7 +409,8 @@ def main():
                         f"{e(name)} 단지별 거래 흐름 자세히 보기</a></p>")
             site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | k-apts",
                        page_desc(name, ss, tp.iloc[0] if len(r_sgg) else None, len(r_sgg), ref,
-                                 "최근 한 달 실거래가 순위 10, 1년 전보다 많이 오른 아파트" if len(r_sgg)
+                                 ("최근 한 달 실거래가 순위 10, " + ("84㎡·59㎡ 단지별 시세, " if sz else "")
+                                  + "1년 전보다 많이 오른 아파트") if len(r_sgg)
                                  else "시장 브리핑과 같은 시도 다른 시군구 시세"),
                        "".join(body), [("전국", "index.html"), (short, f"r/{sido}.html"), (rg["sggnm"], None)])
         # ── 시도 페이지

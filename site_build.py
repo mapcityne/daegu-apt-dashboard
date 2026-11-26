@@ -131,7 +131,8 @@ class Site:
         self.out, self.base_url = out, base_url.rstrip("/")
         self.pages = []
         g = lambda k: ads.conf(k)  # noqa: E731
-        self.head_ads = ads.adsense_head(g("ADSENSE_CLIENT"))
+        self.ga = ads.ga_head(g("GA_ID"))
+        self.head_ads = self.ga + ("\n" if self.ga else "") + ads.adsense_head(g("ADSENSE_CLIENT"))
         self.adfit = ads.adfit(g("ADFIT_UNIT_PC"), g("ADFIT_UNIT_MO"))
         self.coupang = ads.coupang_block(g("COUPANG_ID"), g("COUPANG_TRACKING"), g("COUPANG_TEMPLATE"))
         self.ads_txt = ads.ads_txt(g("ADSENSE_CLIENT"))
@@ -490,7 +491,8 @@ def main():
 
     site.write("about.html", "기준 안내 | k-apts", "k-apts가 숫자를 만드는 방법과 데이터 출처.", ABOUT,
                [("전국", "index.html"), ("기준 안내", None)])
-    site.write("privacy.html", "개인정보처리방침 | k-apts", "k-apts 개인정보처리방침.", PRIVACY,
+    privacy = PRIVACY.replace("<h2>접속 기록</h2>", GA_NOTE + "<h2>접속 기록</h2>") if site.ga else PRIVACY
+    site.write("privacy.html", "개인정보처리방침 | k-apts", "k-apts 개인정보처리방침.", privacy,
                [("전국", "index.html"), ("개인정보처리방침", None)])
     site.write("404.html", "페이지를 찾을 수 없습니다 | k-apts", "", '<h1>페이지를 찾을 수 없습니다</h1>'
                '<p><a href="index.html">전국 첫 화면으로 가기</a></p>')
@@ -527,6 +529,13 @@ ABOUT = """<h1>기준 안내</h1>
 <ul><li>실거래가: 국토교통부 아파트 매매 실거래가 상세 자료(공공데이터포털)</li>
 <li>미분양·아파트 준공: 국토교통부, 인구 이동: 국가데이터처 (KOSIS 공유서비스)</li>
 <li>행정구역 경계: 통계청 SGIS, vuski/admdongkor 가공 (CC BY 4.0)</li></ul>"""
+
+GA_NOTE = """<h2>방문 통계</h2>
+<ul><li>사이트 개선을 위해 Google 애널리틱스로 방문 수, 본 페이지, 유입 경로, 기기 종류 같은 통계를 수집합니다.
+개인을 식별하는 정보는 수집하지 않으며, 운영자는 집계된 통계만 봅니다.</li>
+<li>Google 애널리틱스는 쿠키를 사용하며, <a href="https://tools.google.com/dlpage/gaoptout">차단 부가기능</a>이나
+브라우저의 쿠키 거부로 수집을 막을 수 있습니다.</li></ul>
+"""
 
 PRIVACY = """<h1>개인정보처리방침</h1>
 <p>k-apts(이하 '사이트')는 이용자의 개인정보를 직접 수집하지 않습니다. 회원 가입, 로그인, 게시판, 문의 양식이 없습니다.</p>

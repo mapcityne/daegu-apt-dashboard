@@ -9,6 +9,7 @@
   COUPANG_ID         123456                           (쿠팡 파트너스 다이나믹 배너 id)
   COUPANG_TRACKING   AF1234567                        (쿠팡 파트너스 trackingCode)
   COUPANG_TEMPLATE   carousel                         (선택, 기본 carousel)
+  GA_ID              G-XXXXXXXXXX                     (구글 애널리틱스 4 측정 ID, 방문 통계)
 """
 import json
 import os
@@ -20,6 +21,15 @@ COUPANG_NOTICE = "이 사이트는 쿠팡 파트너스 활동의 일환으로, �
 def conf(name: str, getter=None) -> str:
     v = getter(name) if getter else None
     return (v or os.environ.get(name, "") or "").strip()
+
+
+def ga_head(mid: str) -> str:
+    """구글 애널리틱스 4 (방문자 수·많이 본 페이지·유입 경로 집계용)."""
+    if not re.fullmatch(r"G-[A-Z0-9]{4,20}", mid):
+        return ""
+    return (f'<script async src="https://www.googletagmanager.com/gtag/js?id={mid}"></script>\n'
+            "<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}"
+            f"gtag('js',new Date());gtag('config','{mid}');</script>")
 
 
 def adsense_head(client: str) -> str:

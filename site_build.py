@@ -179,9 +179,7 @@ def news_lines(name, d, m, last, gen):
 
 
 def quote_card(m, lines, src, more=""):
-    text = " ".join(lines) + f" ({src})"
-    return (f'<div class="card quote"><div class="q-head"><b>{m:%Y년 %-m월} 요약 · 기사 인용용</b>'
-            f'<button type="button" class="copy" data-copy="{e(text)}">문장 복사</button></div>'
+    return (f'<div class="card quote"><div class="q-head"><b>{m:%Y년 %-m월} 요약</b></div>'
             + "".join(f"<p>{e(x)}</p>" for x in lines) + f'<p class="src">{e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>{more}</div>')
 
 
@@ -196,7 +194,7 @@ def josa(word, a, b):
     return a
 
 
-def story_items(sg, gen, data_end):
+def story_items(sg, gen, data_end, limit=None, page=False):
     """기자가 관심 가질 만한 숫자를 자동으로 골라 기사체 문장으로 만든다.
     잡음을 줄이려고 최근 3개월 거래가 100건 이상인 시군구만 본다."""
     src = f"국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계), 실거래가 리포트 계산"
@@ -263,11 +261,17 @@ def story_items(sg, gen, data_end):
     story_items.last = [{"분류": h, "문장": txt, "링크": u, "자료": src, "안내": AI_NOTE} for h, txt, u in items]
     if not items:
         return ""
+    shown = items[:limit] if limit else items
     li = "".join(
         f'<li><div class="st-head"><b>{e(h)}</b></div>'
-        f'<p>{e(txt)}</p><a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u in items)
-    return (f'<h2 id="news">주요 뉴스</h2><p class="sub">최근 3개월 거래 100건 이상인 시군구 기준, 매일 갱신합니다.</p>'
-            f'<ol class="stories">{li}</ol><p class="sig-note">자료: {e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>')
+        f'<p>{e(txt)}</p><a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u in shown)
+    sub = f"{gen:%Y년 %-m월 %-d일} 기준 · 최근 3개월 거래 100건 이상인 시군구에서 눈에 띄는 숫자를 매일 골랐습니다."
+    head = (f'<h1>주요 뉴스</h1><p class="sub">{sub}</p>' if page
+            else f'<h2 id="news">주요 뉴스</h2><p class="sub">{sub}</p>')
+    more = (f'<p class="more-in"><a href="news.html">주요 뉴스 {len(items)}건 전체 보기 →</a></p>'
+            if limit and len(items) > limit else "")
+    return (f'{head}<ol class="stories">{li}</ol>{more}'
+            f'<p class="sig-note">자료: {e(src)}<br><span class="ai-note">{AI_NOTE}</span></p>')
 
 
 def sig_csv(rows) -> str:
@@ -420,7 +424,8 @@ class Site:
             cur = ' aria-current="page"' if on else ""
             return f'<a class="{(cls + on).strip()}" href="{up}{href}"{cur}>{e(text)}</a>'
 
-        main_links = [("index.html", "전국 시세"), ("today.html", "오늘 공개 거래"), ("stats.html", "월간 통계")]
+        main_links = [("index.html", "전국 시세"), ("news.html", "주요 뉴스"), ("today.html", "오늘 공개 거래"),
+                      ("stats.html", "월간 통계")]
         out = ['<aside class="side" id="side"><nav aria-label="사이트 메뉴">',
                '<p class="side-h">시세 보기</p><ul class="tree">'
                + "".join(f"<li>{link(h, t)}</li>" for h, t in main_links) + "</ul>",
@@ -783,12 +788,18 @@ def main():
             f"<h1>전국 아파트값 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}</h1>"
             f'<p class="lead">{ref:%Y년 %-m월} 기준, 같은 단지끼리 비교한 가격지수입니다. 최근 3개월 흐름은 '
             f'<b>{e(j)}</b>{"로" if j.endswith("류") else "으로"} 판정했습니다.</p>'
-            '<p class="home-links"><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
+            '<p class="home-links"><a href="news.html">주요 뉴스</a><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
             '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
             f'<section class="signal"><h2>지역별 시장 신호</h2><p class="sub">전국 최근 3개월 판정: {badge(j)}</p>'
             f"{sigtable(sig_main, sig_more)}"
             '<p class="dl"><a href="data/sido_signal.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',
-            story_items(sg, gen, pd.Timestamp(meta["데이터_끝"])), site.ad()]
+            story_items(sg, gen, pd.Timestamp(meta["데이터_끝"]), limit=3), site.ad()]
+    # 주요 뉴스 전용 페이지(메뉴)
+    news_body = story_items(sg, gen, pd.Timestamp(meta["데이터_끝"]), page=True)
+    if news_body:
+        site.write("news.html", f"주요 뉴스 · 아파트 실거래가에서 눈에 띄는 숫자 ({gen:%Y.%m.%d}) | 실거래가 리포트",
+                   "가장 많이 오른 곳과 내린 곳, 신고가 비중, 거래량 급증, 계약 해제, 직거래 비중, 최근 최고가 거래를 "
+                   "매일 정리합니다.", news_body + site.ad(), [("전국", "index.html"), ("주요 뉴스", None)])
     (site.out / "data").mkdir(parents=True, exist_ok=True)
     # 주요 뉴스를 SNS 게시·숏폼 자동화가 읽을 수 있게 JSON으로도 남긴다
     base = site.base_url or "https://k-apts.co.kr"
@@ -889,7 +900,7 @@ def build_stats_page(site, nat_m, sido_month, sgg_month, m, last, gen, stamp):
     nat = nat_m.loc[m]
     desc = (f"{m:%Y년 %-m월} 전국 아파트 매매 {int(nat['거래량']):,}건(전월 대비 {pct(nat['거래량_전월'], 0)}, "
             f"전년 동월 대비 {pct(nat['거래량_전년'], 0)}). 시도·시군구별 거래량과 중위 거래가, 가격지수 변동을 "
-            "기사 인용용 문장과 함께 정리했습니다.")
+            "요약 문장과 함께 정리했습니다.")
     site.write("stats.html", f"{m:%Y년 %-m월} 아파트 매매 월간 통계 · 시도·시군구 거래량 | 실거래가 리포트", desc,
                "".join(body), [("전국", "index.html"), ("월간 통계", None)])
 
@@ -981,7 +992,7 @@ ABOUT = """<h1>기준 안내</h1>
 <ul><li>계약월 기준입니다. 거래량은 해제 거래를 뺀 전체 매매 신고 건수(직거래 포함), 중위 거래가·평당가는 직거래를
 뺀 거래로 계산합니다.</li>
 <li>계약 후 30일 안에 신고하므로 이번 달은 '집계 중', 신고기한이 남은 지난달은 '잠정'으로 표시합니다.</li>
-<li>'기사 인용용' 문장은 표의 숫자를 그대로 문장으로 옮긴 것이며, 인용할 때 자료 출처와 집계일을 함께 적어 주세요.</li></ul>
+<li>월별 요약 문장은 표의 숫자를 그대로 문장으로 옮긴 것이며, 인용할 때 자료 출처와 집계일을 함께 적어 주세요.</li></ul>
 <h2>오늘 공개된 거래</h2>
 <ul><li>실거래가 자료에는 신고일이 없어, 매일 새벽 갱신 때 전날 갱신에 없던 거래(최근 2개월 계약분)를 새로 공개된
 거래로 셉니다. 해제 거래는 뺍니다.</li></ul>

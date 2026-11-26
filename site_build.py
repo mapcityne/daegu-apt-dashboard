@@ -63,19 +63,33 @@ def table(head, rows, cls="") -> str:
     return f'<div class="tbl"><table class="{cls}"><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
-def figures(s) -> str:
-    """핵심 지표를 기사 속 통계 상자처럼 표 한 장으로 보여준다."""
-    rows = [("가격지수 3개월", pct(s.get("3개월")), "같은 단지·같은 면적 비교"),
-            ("가격지수 6개월", pct(s.get("6개월")), ""),
-            ("가격지수 1년", pct(s.get("1년")), ""),
-            ("1년 전보다 오른 단지", pct(s.get("상승비율"), 0, False) if s.get("상승비율") is not None else "-",
-             "비교 가능한 단지 중 비율"),
-            ("거래량", pct(s.get("거래량증감"), 0), "전년 같은 3개월 대비"),
-            ("신고가 거래", pct(s.get("신고가비율"), 1, False) if s.get("신고가비율") is not None else "-",
-             "최근 3개월 거래 중 비중")]
-    body = "".join(f'<tr><th scope="row">{a}</th><td class="v {sign_cls(b)}">{b}</td><td class="n">{c}</td></tr>'
-                   for a, b, c in rows)
-    return f'<table class="sigtbl"><tbody>{body}</tbody></table>'
+SIG_NOTE = ("가격지수는 같은 단지·같은 면적끼리 비교한 변동률입니다. 오른 단지: 1년 전보다 오른 단지 비율 · "
+            "거래량: 전년 같은 3개월 대비 · 신고가 비중: 최근 3개월 거래 중")
+
+
+def _sig_cells(st) -> str:
+    vals = [pct(st.get("3개월")), pct(st.get("6개월")), pct(st.get("1년")),
+            pct(st.get("상승비율"), 0, False) if st.get("상승비율") is not None else "-",
+            pct(st.get("거래량증감"), 0),
+            pct(st.get("신고가비율"), 1, False) if st.get("신고가비율") is not None else "-"]
+    j = st.get("판정", "판단 보류")
+    return ("".join(f'<td class="{sign_cls(v)}">{v}</td>' for v in vals)
+            + f'<td><span class="v-{VKEY.get(j, "hold")} vt">{e(j)}</span></td>')
+
+
+def sigtable(rows, more=()) -> str:
+    """시세표: 지역별 핵심 지표를 한 줄씩. more는 '더 보기'를 눌러야 보이는 줄."""
+    def tr(label, st, cls=""):
+        return f'<tr class="{cls}"><th scope="row">{label}</th>{_sig_cells(st)}</tr>'
+    body = "".join(tr(lb, st) for lb, st in rows) + "".join(tr(lb, st, "sig-more") for lb, st in more)
+    btn = ('<button type="button" class="sig-toggle" onclick="var t=this.parentNode;t.classList.toggle(\'open\');'
+           'this.textContent=t.classList.contains(\'open\')?\'접기\':\'시도 전체 보기\'">시도 전체 보기</button>'
+           if more else "")
+    return ('<div class="sigwrap"><div class="tbl"><table class="sigtbl"><thead>'
+            '<tr><th rowspan="2">지역</th><th colspan="3">가격지수 변동</th><th colspan="3">시장 분위기</th>'
+            '<th rowspan="2">판정</th></tr>'
+            '<tr><th>3개월</th><th>6개월</th><th>1년</th><th>오른 단지</th><th>거래량</th><th>신고가 비중</th></tr>'
+            f'</thead><tbody>{body}</tbody></table></div>{btn}<p class="sig-note">{SIG_NOTE}</p></div>')
 
 
 def badge(j):
@@ -168,6 +182,106 @@ def quote_card(m, lines, src, more=""):
     return (f'<div class="card quote"><div class="q-head"><b>{m:%Y년 %-m월} 요약 · 기사 인용용</b>'
             f'<button type="button" class="copy" data-copy="{e(text)}">문장 복사</button></div>'
             + "".join(f"<p>{e(x)}</p>" for x in lines) + f'<p class="src">{e(src)}</p>{more}</div>')
+
+
+def josa(word, a, b):
+    """받침 있으면 a, 없으면 b (으로/로는 ㄹ받침도 b)."""
+    ch = str(word)[-1:]
+    if not ("가" <= ch <= "힣"):
+        return b
+    jong = (ord(ch) - 0xAC00) % 28
+    if jong == 0 or (a == "으로" and jong == 8):
+        return b
+    return a
+
+
+def story_items(sg, gen, data_end):
+    """기자가 관심 가질 만한 숫자를 자동으로 골라 기사체 문장으로 만든다.
+    잡음을 줄이려고 최근 3개월 거래가 100건 이상인 시군구만 본다."""
+    src = f"국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계), k-apts 계산"
+    big = sg[sg["거래수_3개월"] >= 100].copy()
+    items = []
+
+    def link(r):
+        return f'r/{r["코드"]}.html'
+
+    def top(col, asc=False):
+        d = big.dropna(subset=[col]).sort_values(col, ascending=asc)
+        return d.head(3) if len(d) else None
+
+    t = top("3개월")
+    if t is not None:
+        r, rest = t.iloc[0], t.iloc[1:]
+        tail = ", ".join(f"{x['nm']}({pct(x['3개월'])})" for _, x in rest.iterrows())
+        items.append(("가장 많이 오른 곳", f"최근 3개월 아파트값이 가장 많이 오른 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} 같은 단지 기준 "
+                      f"{abs(r['3개월']):.1f}% 올랐다." + (f" 이어 {tail} 순이었다." if tail else ""), link(r)))
+    t = top("3개월", True)
+    if t is not None and t.iloc[0]["3개월"] < 0:
+        r = t.iloc[0]
+        items.append(("가장 많이 내린 곳", f"같은 기간 가장 많이 내린 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} {abs(r['3개월']):.1f}% 떨어졌다.", link(r)))
+    t = top("신고가비율")
+    if t is not None:
+        r = t.iloc[0]
+        items.append(("신고가 비중", f"최근 3개월 거래 중 신고가 비중이 가장 높은 곳은 {r['nm']}{josa(r['nm'], '으로', '로')}, "
+                      f"거래 {int(r['거래수_3개월']):,}건 중 {r['신고가비율']:.1f}%가 직전 최고가를 넘었다.", link(r)))
+    t = top("거래량증감")
+    if t is not None and t.iloc[0]["거래량증감"] > 0:
+        r = t.iloc[0]
+        items.append(("거래량 급증", f"거래량은 {r['nm']}{josa(r['nm'], '이', '가')} 가장 크게 늘었다. 최근 3개월 {int(r['거래수_3개월']):,}건으로 "
+                      f"1년 전 같은 기간보다 {r['거래량증감']:.0f}% 많다.", link(r)))
+    t = top("해제율")
+    if t is not None:
+        r = t.iloc[0]
+        items.append(("계약 해제", f"계약 해제 비율이 가장 높은 곳은 {r['nm']}{josa(r['nm'], '으로', '로')} 최근 3개월 거래의 "
+                      f"{r['해제율']:.1f}%가 해제 신고됐다.", link(r)))
+    t = top("직거래율")
+    if t is not None:
+        r = t.iloc[0]
+        items.append(("직거래 비중", f"중개업소를 거치지 않은 직거래 비중은 {r['nm']}{josa(r['nm'], '이', '가')} {r['직거래율']:.1f}%로 가장 높았다.",
+                      link(r)))
+    try:
+        tt = pd.read_parquet(OUT_DIR / "nat_top_trades.parquet")
+        tt = tt[tt["계약일자"] >= data_end - pd.Timedelta(days=30)].sort_values("거래금액_억", ascending=False)
+        if len(tt):
+            r = tt.iloc[0]
+            items.append(("최근 한 달 최고가", f"최근 한 달 전국 최고가 거래는 {SIDO_SHORT.get(str(r['시도코드']), '')} "
+                          f"{r['시군구']} {r['법정동']} {r['단지명']} 전용 {r['전용면적']:.0f}㎡{josa('㎡', '으로', '로')} "
+                          f"{won(r['거래금액_억'])}에 팔렸다({r['계약일자']:%-m월 %-d일} 계약).", f"r/{r['시도코드']}.html"))
+    except Exception:
+        pass
+    try:
+        nh = pd.read_parquet(OUT_DIR / "nat_new_highs.parquet")
+        nh = nh[nh["계약일자"] >= data_end - pd.Timedelta(days=30)]
+        if len(nh):
+            by = nh["시도코드"].astype(str).value_counts()
+            lead = ", ".join(f"{SIDO_SHORT.get(c, c)} {n:,}건" for c, n in by.head(3).items())
+            items.append(("신고가 거래 건수", f"최근 30일 전국에서 직전 최고가를 넘은 거래는 {len(nh):,}건이었다. "
+                          f"지역별로는 {lead} 순으로 많았다.", "today.html"))
+    except Exception:
+        pass
+    if not items:
+        return ""
+    li = "".join(
+        f'<li><div class="st-head"><b>{e(h)}</b><button type="button" class="copy" '
+        f'data-copy="{e(txt + " (" + src + ")")}">문장 복사</button></div>'
+        f'<p>{e(txt)}</p><a class="st-more" href="{u}">자세히 →</a></li>' for h, txt, u in items)
+    return (f'<h2 id="story">이번 주 기사 거리</h2><p class="sub">최근 3개월 거래 100건 이상인 시군구 기준으로 눈에 띄는 '
+            f'숫자를 매일 자동으로 골랐습니다. 문장은 그대로 인용할 수 있습니다.</p>'
+            f'<ol class="stories">{li}</ol><p class="sig-note">자료: {e(src)}</p>')
+
+
+def sig_csv(rows) -> str:
+    """지역별 시장 신호 표를 CSV로 (엑셀에서 바로 열리게 BOM 포함)."""
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["지역", "가격지수_3개월(%)", "가격지수_6개월(%)", "가격지수_1년(%)", "1년전보다_오른_단지(%)",
+                "거래량_전년동기대비(%)", "신고가_비중(%)", "거래수_3개월", "판정"])
+    for name, st in rows:
+        f = lambda k, d=2: "" if st.get(k) is None or st.get(k) != st.get(k) else round(float(st.get(k)), d)
+        w.writerow([name, f("3개월"), f("6개월"), f("1년"), f("상승비율", 1), f("거래량증감", 1), f("신고가비율", 1),
+                    (int(st["거래수_3개월"]) if st.get("거래수_3개월") == st.get("거래수_3개월") and st.get("거래수_3개월") is not None else ""), st.get("판정", "")])
+    return "\ufeff" + buf.getvalue()
 
 
 def vol_bar(v, vmax):
@@ -470,7 +584,7 @@ def hero(name, parent_name, s):
     p = f'<span class="eyebrow">{e(parent_name)}</span>' if parent_name else ""
     return (f'<section class="hero card"><div class="hero-top"><div>{p}<h1>{e(name)} 아파트 실거래가</h1></div>'
             f'</div><p class="why">{why} 최근 3개월 판정은 {badge(j)}입니다.</p>'
-            f'{figures(s)}</section>')
+            f'{sigtable([(e(name), s)])}</section>')
 
 
 def page_desc(name, s, top, n, ref, tail, where=""):
@@ -659,6 +773,11 @@ def main():
             for _, r in df.iterrows()) + "</div>"
 
     n_sgg = int((stats["단계"] == "시군구").sum())
+    by_sido = {c: (short, st) for c, short, st in sido_rows}
+    first = ["11", "41", "26", "27"]  # 서울·경기·부산·대구를 먼저
+    sido_link = lambda c: f'<a href="r/{c}.html">{e(by_sido[c][0])}</a>'
+    sig_main = [("전국", nat)] + [(sido_link(c), by_sido[c][1]) for c in first if c in by_sido]
+    sig_more = [(sido_link(c), by_sido[c][1]) for c in SIDO_SHORT if c in by_sido and c not in first]
     body = [f'<section class="home"><p class="dateline">{gen:%Y년 %-m월 %-d일} 갱신 · 국토교통부 실거래가 '
             f'{meta["거래수"] / 1e4:,.0f}만 건, 전국 {n_sgg}개 시군구</p>'
             f"<h1>전국 아파트값 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}</h1>"
@@ -666,8 +785,14 @@ def main():
             f'<b>{e(j)}</b>{"로" if j.endswith("류") else "으로"} 판정했습니다.</p>'
             '<p class="home-links"><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
             '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
-            f'<section class="signal"><h2>전국 시장 신호</h2><p class="sub">최근 3개월 판정: {badge(j)}</p>'
-            f"{figures(nat)}</section>", site.ad()]
+            f'<section class="signal"><h2>지역별 시장 신호</h2><p class="sub">전국 최근 3개월 판정: {badge(j)}</p>'
+            f"{sigtable(sig_main, sig_more)}"
+            '<p class="dl"><a href="data/sido_signal.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',
+            story_items(sg, gen, pd.Timestamp(meta["데이터_끝"])), site.ad()]
+    (site.out / "data").mkdir(parents=True, exist_ok=True)
+    (site.out / "data" / "sido_signal.csv").write_text(
+        sig_csv([("전국", nat)] + [(by_sido[c][0], by_sido[c][1]) for c in SIDO_SHORT if c in by_sido]),
+        encoding="utf-8")
     if sm is not None:
         ln, src = news_lines("전국", nat_m, sm, last_all, gen)
         body.append(f"<h2>{sm:%-m월} 전국 아파트 매매 통계</h2><p class='sub'>시도·시군구별 거래량과 가격지수 비교는 "

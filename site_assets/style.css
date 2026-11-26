@@ -133,14 +133,36 @@ p, li { max-width: 46em; }
 .v-flat { color: var(--flat); background: var(--flat-soft); }
 .v-hold { color: #9AA3B2; background: #F2F4F7; }
 
-/* 핵심 지표 표 */
-.sigtbl { width: 100%; max-width: 40rem; border-collapse: collapse; margin-top: .9rem; font-size: .96rem; }
-.sigtbl th, .sigtbl td { padding: .55rem .2rem; border-bottom: 1px solid var(--line-2); text-align: left; font-weight: 400; }
-.sigtbl tr:first-child th, .sigtbl tr:first-child td { border-top: 1px solid var(--ink); }
-.sigtbl th { color: var(--text); white-space: nowrap; padding-right: 1rem; background: none; font-size: inherit; letter-spacing: 0; }
-.sigtbl .v { font-weight: 700; color: var(--ink); text-align: right; white-space: nowrap; padding-right: 1.2rem; }
-.sigtbl .n { color: var(--muted); font-size: .84rem; }
-@media (max-width: 520px) { .sigtbl .n { display: none; } .card { padding: 1.2rem 1.1rem; } }
+/* 시세표 */
+.sigwrap { margin-top: .9rem; }
+.sigtbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.sigtbl th, .sigtbl td { text-align: center; white-space: nowrap; padding: .6rem .7rem; }
+.sigtbl tbody th { text-align: left; font-weight: 700; color: var(--ink); background: none; font-size: .95rem; }
+.sigtbl tbody td { font-weight: 700; font-size: 1rem; color: var(--ink); }
+.sigtbl tbody tr + tr th, .sigtbl tbody tr + tr td { border-top: 1px solid var(--line-2); }
+.sigtbl tbody tr:first-child th, .sigtbl tbody tr:first-child td { font-size: 1.05rem; }
+.sigtbl .vt { background: none !important; font-size: .9rem; }
+.sigtbl .sig-more { display: none; }
+.sigwrap.open .sig-more { display: table-row; }
+.sig-toggle { margin-top: .6rem; background: none; border: 1px solid var(--line); border-radius: 6px; padding: .45rem .9rem;
+  font: inherit; font-size: .9rem; font-weight: 600; color: var(--blue); cursor: pointer; }
+.sig-toggle:hover { border-color: var(--blue); }
+.sig-note { color: var(--muted); font-size: .82rem; margin: .6rem 0 0; max-width: none; }
+@media print { .sigtbl .sig-more { display: table-row; } .sig-toggle { display: none; } }
+@media (max-width: 520px) { .card { padding: 1.2rem 1.1rem; } .sigtbl th, .sigtbl td { padding: .5rem .55rem; } }
+
+/* 기사 거리 */
+.stories { list-style: none; counter-reset: st; padding: 0; margin: .4rem 0 0; border-top: 1px solid var(--ink); }
+.stories li { counter-increment: st; padding: .9rem 0 .8rem 2.2rem; border-bottom: 1px solid var(--line); position: relative; }
+.stories li::before { content: counter(st); position: absolute; left: 0; top: .9rem; font-family: var(--serif);
+  font-size: 1.3rem; color: var(--muted); }
+.stories .st-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.stories .st-head b { font-size: .86rem; color: var(--blue); letter-spacing: .02em; }
+.stories p { margin: .3rem 0 .2rem; font-family: var(--serif); font-size: 1.04rem; line-height: 1.65; color: var(--ink); }
+.stories .st-more { font-size: .86rem; font-weight: 600; }
+.dl { margin: .4rem 0 0; font-size: .9rem; font-weight: 600; }
+.sigtbl tbody th, .sigtbl thead tr:first-child th:first-child { position: sticky; left: 0; z-index: 1; }
+.sigtbl tbody th { background: var(--card); }
 
 /* 지역 카드 */
 .rgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }

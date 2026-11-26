@@ -402,6 +402,84 @@ def vol_bar(v, vmax):
             f"<span>{int(v):,}</span>")
 
 
+def month_chart(title, d, col, kind, fmt, note=""):
+    """월별 세로 그래프(SVG). kind='bar'|'line'. 신고기한 전 달은 연한 색. 값은 마우스를 올리면 정확히 보이고,
+    처음·마지막·최고·최저 값은 그림 위에 적는다."""
+    v = d[col].astype(float)
+    ok = v.notna()
+    if ok.sum() < 2:
+        return ""
+    W, H, L, R, T, B = 300, 170, 6, 6, 20, 30
+    n = len(d)
+    step = (W - L - R) / n
+    lo = 0.0 if kind == "bar" else float(v[ok].min())
+    hi = float(v[ok].max())
+    if kind == "line":
+        pad = (hi - lo) * 0.25 or abs(hi) * 0.02 or 1
+        lo, hi = lo - pad, hi + pad
+    else:
+        hi *= 1.18
+    y = lambda x: T + (1 - (x - lo) / ((hi - lo) or 1)) * (H - T - B)
+    cx = lambda i: L + step * (i + 0.5)
+    prov = [bool(st) for st in d["상태"]]
+    idx_ok = np.flatnonzero(ok.to_numpy())
+    marks = set()
+    picks = ((int(idx_ok[-1]), int(np.nanargmax(v.to_numpy()))) if kind == "bar"  # 막대는 최고·최근만
+             else (int(idx_ok[-1]), int(np.nanargmax(v.to_numpy())), int(np.nanargmin(v.to_numpy())), int(idx_ok[0])))
+    for k in picks:
+        if all(abs(k - m) > 1 for m in marks):  # 붙어 있는 글자는 겹치므로 하나만
+            marks.add(k)
+    out = [f'<svg viewBox="0 0 {W} {H}" class="chart mchart" role="img" aria-label="{e(title)}">',
+           f'<line x1="{L}" x2="{W - R}" y1="{H - B}" y2="{H - B}" class="zero"/>']
+    pts, labels = [], []
+    for i, (m, val) in enumerate(zip(d.index, v)):
+        if i % 3 == (n - 1) % 3 or i == 0:
+            yl = f"{m:%y.%m}" if (i == 0 or m.month == 1) else f"{m:%-m}월"
+            out.append(f'<text x="{cx(i):.1f}" y="{H - B + 14}" class="xl" text-anchor="middle">{yl}</text>')
+        if pd.isna(val):
+            continue
+        tip = f"{m:%Y년 %-m월} {fmt(val)}" + (f" ({d['상태'].iloc[i]})" if prov[i] else "")
+        if kind == "bar":
+            bw = step * 0.68
+            out.append(f'<rect x="{cx(i) - bw / 2:.1f}" y="{y(val):.1f}" width="{bw:.1f}" '
+                       f'height="{max(H - B - y(val), 1):.1f}" class="{"p" if prov[i] else "b"}"><title>{e(tip)}</title></rect>')
+        else:
+            pts.append((cx(i), y(val), prov[i], tip))
+        if i in marks:
+            anc = "start" if i <= 1 else "end" if i >= n - 2 else "middle"
+            tx = cx(i) - (step * 0.4 if anc == "start" else -step * 0.4 if anc == "end" else 0)
+            below = kind == "line" and i == int(np.nanargmin(v.to_numpy()))  # 최저점 글자는 점 아래
+            ty = y(val) + 15 if below else y(val) - 6
+            labels.append(f'<text x="{tx:.1f}" y="{ty:.1f}" class="vl" text-anchor="{anc}">{e(fmt(val))}</text>')
+    if pts:
+        solid = [p for p in pts if not p[2]]
+        for seg, cls in ((solid, "ln"), ([solid[-1]] + [p for p in pts if p[2]] if solid else [], "ln p")):
+            if len(seg) >= 2:
+                out.append(f'<polyline points="{" ".join(f"{a:.1f},{b:.1f}" for a, b, *_ in seg)}" class="{cls}"/>')
+        for a, b, pv, tip in pts:
+            out.append(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="3" class="{"p" if pv else "b"}"><title>{e(tip)}</title></circle>')
+    out += labels
+    out.append("</svg>")
+    return (f'<figure class="chartbox"><figcaption>{e(title)}</figcaption>{"".join(out)}'
+            + (f'<p class="chart-note">{e(note)}</p>' if note else "") + "</figure>")
+
+
+def month_charts(d) -> str:
+    di = d.copy()
+    base_i = di["지수"].first_valid_index()
+    if base_i is not None:
+        di["지수100"] = di["지수"] / di.loc[base_i, "지수"] * 100
+    charts = [month_chart("월별 거래량", di, "거래량", "bar", lambda x: f"{x:,.0f}건", "해제 거래 제외, 직거래 포함"),
+              month_chart("중위 거래가", di, "중위가", "line", lambda x: f"{x:.2f}억",
+                          "직거래 제외 거래의 중간값")]
+    if base_i is not None:
+        charts.append(month_chart(f"가격지수 ({base_i:%y.%m}=100)", di, "지수100", "line", lambda x: f"{x:.1f}",
+                                  "같은 단지·같은 면적 비교 지수(자체 계산)"))
+    return ('<div class="charts mcharts">' + "".join(charts) + "</div>"
+            '<p class="chart-note"><span class="pdot"></span> 연한 색: 신고기한(계약 후 30일) 전이라 숫자가 늘 수 있는 달 · '
+            '그래프에 마우스를 올리면 달별 값이 보입니다.</p>')
+
+
 def monthly_section(name, d, last, gen, anchor="monthly"):
     m = summary_month(d)
     if m is None:
@@ -420,8 +498,10 @@ def monthly_section(name, d, last, gen, anchor="monthly"):
     return (f'<h2 id="{anchor}">{e(name)} 월별 통계</h2><p class="sub">계약월 기준입니다. 거래량은 해제 거래를 뺀 '
             "전체 매매 신고, 가격은 직거래를 뺀 거래 기준입니다. 실거래는 계약 후 30일 안에 신고하므로 최근 두 달은 "
             "숫자가 더 늘어날 수 있습니다.</p>"
-            + quote_card(m, lines, src) + table(["계약월", "거래량", "전월 대비", "전년 동월 대비", "중위 거래가", "중위 평당가",
-                     "가격지수 전월 대비", "가격지수 1년"], rows, "monthly"))
+            + quote_card(m, lines, src) + month_charts(d)
+            + '<details class="as-table"><summary>표로 보기</summary>'
+            + table(["계약월", "거래량", "전월 대비", "전년 동월 대비", "중위 거래가", "중위 평당가",
+                     "가격지수 전월 대비", "가격지수 1년"], rows, "monthly") + "</details>")
 
 
 def fresh_rows(df, by_sgg, counts=None):
@@ -905,9 +985,9 @@ def main():
             f'<p class="sig-note">{PERIOD_BASIS}<br>{FOCUS_NOTE}.<br>최근 계약은 신고기한(계약 후 30일) 전이라 바뀔 수 있습니다.<br>'
             f'<span class="ai-note">{AI_NOTE}</span></p>'
             '<p class="dl"><a href="data/region_period.csv" download>표 데이터 내려받기 (CSV)</a></p></section>',
-            story_items(pres, gen, data_end, limit=4), site.ad()]
+            site.ad()]
+    news_body = story_items(pres, gen, data_end, page=True)  # 주요 뉴스는 메뉴 페이지에만
     # 주요 뉴스 전용 페이지(메뉴)
-    news_body = story_items(pres, gen, data_end, page=True)
     if news_body:
         site.write("news.html", f"주요 뉴스 · 아파트 실거래가에서 눈에 띄는 숫자 ({gen:%Y.%m.%d}) | 실거래가 리포트",
                    "서울·경기남부·부산·대구 아파트의 기간별 가격 변동, 최근 최고가 거래, 신고가 거래를 매일 정리합니다.", news_body + site.ad(), [("전국", "index.html"), ("주요 뉴스", None)])

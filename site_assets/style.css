@@ -308,3 +308,13 @@ table.monthly td { white-space: nowrap; }
 .as-table summary { cursor: pointer; font-size: .9rem; font-weight: 600; color: var(--blue); }
 .as-table .tbl { margin-top: .6rem; }
 @media print { .as-table { display: none; } }
+.mcharts { grid-template-columns: repeat(3, 1fr); margin-bottom: .2rem; }
+@media (max-width: 1100px) { .mcharts { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 700px) { .mcharts { grid-template-columns: 1fr; } }
+.mchart .b { fill: var(--navy); } .mchart .p { fill: #A9B4C6; }
+.mchart .ln { fill: none; stroke: var(--navy); stroke-width: 2; } .mchart .ln.p { stroke: #A9B4C6; stroke-dasharray: 4 3; fill: none; }
+.mchart circle.b { fill: var(--navy); } .mchart circle.p { fill: #A9B4C6; }
+.mchart .xl { font-size: 10.5px; fill: var(--muted); }
+.mchart .vl { font-size: 11px; }
+.pdot { display: inline-block; width: 10px; height: 10px; background: #A9B4C6; vertical-align: -1px; }
+.mchart .vl { paint-order: stroke; stroke: var(--bg); stroke-width: 3.5px; stroke-linejoin: round; }

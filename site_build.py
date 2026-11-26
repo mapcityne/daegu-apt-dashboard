@@ -63,36 +63,23 @@ def table(head, rows, cls="") -> str:
     return f'<div class="tbl"><table class="{cls}"><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
-def gauge(value, span=4.0) -> str:
-    mark = ""
-    if value is not None and value == value:
-        v = max(min(float(value), span), -span)
-        if v <= -1:
-            pos = (v + span) / (span - 1) * 3 / 7
-        elif v >= 1:
-            pos = 4 / 7 + (v - 1) / (span - 1) * 3 / 7
-        else:
-            pos = 3 / 7 + (v + 1) / 2 / 7
-        mark = f'<div class="mark" style="left:{pos * 100:.2f}%"><b>최근 3개월 {value:+.1f}%</b></div>'
-    return (f'<div class="gauge"><div class="track"><span></span><span></span><span></span>{mark}</div>'
-            f'<div class="ticks"><span>하락</span><span>보합</span><span>상승</span></div></div>')
-
-
 def figures(s) -> str:
-    items = [("3개월", pct(s.get("3개월")), "가격지수 변동"), ("6개월", pct(s.get("6개월")), "가격지수 변동"),
-             ("1년", pct(s.get("1년")), "가격지수 변동"),
-             ("오른 단지", pct(s.get("상승비율"), 0, False) if s.get("상승비율") is not None else "-",
-              "1년 전보다 오른 단지 비율"),
-             ("거래량", pct(s.get("거래량증감"), 0), "전년 같은 3개월 대비"),
-             ("신고가", pct(s.get("신고가비율"), 1, False) if s.get("신고가비율") is not None else "-",
-              "최근 3개월 거래 중")]
-    return '<div class="figs">' + "".join(
-        f'<div class="fig"><div class="lab">{a}</div><div class="num {sign_cls(b)}">{b}</div>'
-        f'<div class="sub">{c}</div></div>' for a, b, c in items) + "</div>"
+    """핵심 지표를 기사 속 통계 상자처럼 표 한 장으로 보여준다."""
+    rows = [("가격지수 3개월", pct(s.get("3개월")), "같은 단지·같은 면적 비교"),
+            ("가격지수 6개월", pct(s.get("6개월")), ""),
+            ("가격지수 1년", pct(s.get("1년")), ""),
+            ("1년 전보다 오른 단지", pct(s.get("상승비율"), 0, False) if s.get("상승비율") is not None else "-",
+             "비교 가능한 단지 중 비율"),
+            ("거래량", pct(s.get("거래량증감"), 0), "전년 같은 3개월 대비"),
+            ("신고가 거래", pct(s.get("신고가비율"), 1, False) if s.get("신고가비율") is not None else "-",
+             "최근 3개월 거래 중 비중")]
+    body = "".join(f'<tr><th scope="row">{a}</th><td class="v {sign_cls(b)}">{b}</td><td class="n">{c}</td></tr>'
+                   for a, b, c in rows)
+    return f'<table class="sigtbl"><tbody>{body}</tbody></table>'
 
 
 def badge(j):
-    return f'<span class="badge v-{VKEY.get(j, "hold")}">{ARROW.get(j, "")} {j}</span>'
+    return f'<b class="badge v-{VKEY.get(j, "hold")}">{j}</b>'
 
 
 def chip(j):
@@ -482,7 +469,7 @@ def hero(name, parent_name, s):
            f"같은 단지·같은 면적 기준 가격지수는 최근 3개월 {pct(s.get('3개월'))}, 1년 {pct(s.get('1년'))}입니다.")
     p = f'<span class="eyebrow">{e(parent_name)}</span>' if parent_name else ""
     return (f'<section class="hero card"><div class="hero-top"><div>{p}<h1>{e(name)} 아파트 실거래가</h1></div>'
-            f'{badge(j)}</div><p class="why">{why}</p>{gauge(s.get("3개월")) if j != "판단 보류" else ""}'
+            f'</div><p class="why">{why} 최근 3개월 판정은 {badge(j)}입니다.</p>'
             f'{figures(s)}</section>')
 
 
@@ -679,8 +666,8 @@ def main():
             f'<b>{e(j)}</b>{"로" if j.endswith("류") else "으로"} 판정했습니다.</p>'
             '<p class="home-links"><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
             '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
-            f'<section class="card signal"><div class="signal-head"><h2>전국 시장 신호</h2>{badge(j)}</div>'
-            f"{gauge(nat.get('3개월'))}{figures(nat)}</section>", site.ad()]
+            f'<section class="signal"><h2>전국 시장 신호</h2><p class="sub">최근 3개월 판정: {badge(j)}</p>'
+            f"{figures(nat)}</section>", site.ad()]
     if sm is not None:
         ln, src = news_lines("전국", nat_m, sm, last_all, gen)
         body.append(f"<h2>{sm:%-m월} 전국 아파트 매매 통계</h2><p class='sub'>시도·시군구별 거래량과 가격지수 비교는 "

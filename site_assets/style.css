@@ -187,3 +187,29 @@ table.rank tbody tr:nth-child(3) td:first-child { background: radial-gradient(ci
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
 .foot .links.sido { gap: .3rem .9rem; font-size: .84rem; }
 .foot .links.sido a { color: var(--muted); font-weight: 500; }
+
+/* 하위 메뉴(섹션 바로가기) */
+.subnav { display: flex; gap: .45rem; overflow-x: auto; white-space: nowrap; margin: 1.2rem 0 .4rem; padding-bottom: 2px; scrollbar-width: none; }
+.subnav::-webkit-scrollbar { display: none; }
+.subnav a { flex: none; font-size: .86rem; font-weight: 600; color: var(--ink); background: #fff; border: 1px solid var(--line);
+  border-radius: 999px; padding: .42rem .85rem; }
+.subnav a:hover { border-color: var(--blue); color: var(--blue); text-decoration: none; }
+h2[id], h3[id] { scroll-margin-top: 120px; }
+h2 small.muted { color: var(--muted); font-size: .9rem; font-weight: 600; margin-left: .3rem; }
+h2 a { color: inherit; }
+
+/* 월별 통계 */
+.quote { padding: 1.2rem 1.3rem; margin: .4rem 0 1rem; border-left: 4px solid var(--blue); }
+.quote .q-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .5rem; }
+.quote p { margin: .3rem 0; line-height: 1.65; color: var(--text); }
+.quote .src { color: var(--muted); font-size: .82rem; margin-top: .7rem; }
+.quote .more-in { margin-top: .6rem; font-weight: 700; }
+.copy { flex: none; border: 1px solid #D6E0F5; background: var(--blue-soft); color: var(--blue); font: inherit; font-size: .8rem;
+  font-weight: 700; border-radius: 999px; padding: .35rem .8rem; cursor: pointer; }
+.tag { display: inline-block; font-size: .7rem; font-weight: 700; color: var(--flat); background: var(--flat-soft);
+  border-radius: 6px; padding: .05rem .35rem; margin-left: .25rem; vertical-align: 1px; }
+.vbar { display: inline-block; width: 70px; height: 8px; background: var(--flat-soft); border-radius: 4px; margin-right: .5rem;
+  vertical-align: middle; overflow: hidden; }
+.vbar i { display: block; height: 100%; background: var(--blue); border-radius: 4px; }
+table.monthly td { white-space: nowrap; }
+@media (max-width: 520px) { .vbar { width: 40px; } .quote { padding: 1rem; } }

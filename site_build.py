@@ -19,6 +19,7 @@ import pandas as pd
 import ads
 import analysis as A
 import briefing as B
+import site_stats as ST
 from common import OUT_DIR, enrich
 from regions import SIDO_SHORT, regions
 
@@ -125,6 +126,117 @@ def sibling_section(short, code, sib):
             "실거래가 순위와 브리핑으로 갑니다.</p><div class='plates sib'>" + "".join(items) + "</div>")
 
 
+# ───────────────────────── 월별 통계·오늘 공개 ─────────────────────────
+def chg_word(v, up="늘었", down="줄었"):
+    if v is None or pd.isna(v):
+        return None
+    if abs(v) < 0.05:
+        return "같은 수준이었"
+    return f"{abs(v):.1f}% {up if v > 0 else down}"
+
+
+def summary_month(d):
+    ok = d[(d["상태"] != "집계 중") & d["거래량"].notna()]
+    return ok.index[-1] if len(ok) else None
+
+
+def won(v_eok):
+    """억 단위 숫자를 기사체 금액으로: 5.69 → 5억6,900만원."""
+    man = int(round(v_eok * 10000))
+    hi, lo = divmod(man, 10000)
+    return (f"{hi}억" if hi else "") + (f"{lo:,}만원" if lo else ("원" if hi else "0원"))
+
+
+def news_lines(name, d, m, last, gen):
+    """기사에 그대로 인용할 수 있는 문장(숫자는 모두 집계값)."""
+    r = d.loc[m]
+    prev = m - pd.DateOffset(months=1)
+    a, b = chg_word(r["거래량_전월"]), chg_word(r["거래량_전년"])
+    base = f"{m:%Y년 %-m월} {name} 아파트 매매 거래는 {int(r['거래량']):,}건으로"
+    if a and b:
+        line = f"{base} 전월({prev:%-m월})보다 {a}고, 1년 전 같은 달보다 {b}다."
+    elif a:
+        line = f"{base} 전월({prev:%-m월})보다 {a}다."
+    elif b:
+        line = f"{base} 1년 전 같은 달보다 {b}다."
+    else:
+        line = f"{base} 집계됐다."
+    out = [line]
+    if pd.notna(r["중위가"]):
+        y = chg_word(r["중위가_전년"], "높았", "낮았")
+        out.append(f"직거래를 뺀 거래의 중위 거래가는 {won(r['중위가'])}"
+                   + (f"으로 1년 전 같은 달보다 {y}다." if y else "이었다."))
+    if pd.notna(r["지수_전월"]):
+        out.append(f"같은 단지·같은 면적끼리 비교한 가격지수는 전월 대비 {pct(r['지수_전월'])}"
+                   + (f", 1년 전 대비 {pct(r['지수_전년'])}였다." if pd.notna(r["지수_전년"]) else "였다."))
+    note = ""
+    if r["상태"] == "잠정":
+        dl = m + pd.offsets.MonthEnd(0) + pd.Timedelta(days=30)
+        note = f", {m:%-m월}분은 신고기한({dl:%-m월 %-d일}) 전 잠정치"
+    src = f"자료: 국토교통부 아파트 매매 실거래가({gen:%Y.%m.%d} 집계{note}), k-apts 계산"
+    return out, src
+
+
+def quote_card(m, lines, src, more=""):
+    text = " ".join(lines) + f" ({src})"
+    return (f'<div class="card quote"><div class="q-head"><b>{m:%Y년 %-m월} 요약 · 기사 인용용</b>'
+            f'<button type="button" class="copy" data-copy="{e(text)}">문장 복사</button></div>'
+            + "".join(f"<p>{e(x)}</p>" for x in lines) + f'<p class="src">{e(src)}</p>{more}</div>')
+
+
+def vol_bar(v, vmax):
+    if pd.isna(v) or not vmax:
+        return "-"
+    return (f'<span class="vbar"><i style="width:{max(v / vmax * 100, 2):.0f}%"></i></span>'
+            f"<span>{int(v):,}</span>")
+
+
+def monthly_section(name, d, last, gen, anchor="monthly"):
+    m = summary_month(d)
+    if m is None:
+        return ""
+    lines, src = news_lines(name, d, m, last, gen)
+    vmax = d["거래량"].max()
+    rows = []
+    for mm, r in d.iloc[::-1].iterrows():
+        tag = f' <small class="tag">{r["상태"]}</small>' if r["상태"] else ""
+        rows.append((f"{mm:%y.%m}{tag}", vol_bar(r["거래량"], vmax),
+                     f'<span class="{sign_cls(pct(r["거래량_전월"]))}">{pct(r["거래량_전월"], 0)}</span>',
+                     f'<span class="{sign_cls(pct(r["거래량_전년"]))}">{pct(r["거래량_전년"], 0)}</span>',
+                     eok(r["중위가"]), f'{r["평당가"]:,.0f}만' if pd.notna(r["평당가"]) else "-",
+                     f'<span class="{sign_cls(pct(r["지수_전월"]))}">{pct(r["지수_전월"])}</span>',
+                     f'<span class="{sign_cls(pct(r["지수_전년"]))}">{pct(r["지수_전년"])}</span>'))
+    return (f'<h2 id="{anchor}">{e(name)} 월별 통계</h2><p class="sub">계약월 기준입니다. 거래량은 해제 거래를 뺀 '
+            "전체 매매 신고, 가격은 직거래를 뺀 거래 기준입니다. 실거래는 계약 후 30일 안에 신고하므로 최근 두 달은 "
+            "숫자가 더 늘어날 수 있습니다.</p>"
+            + quote_card(m, lines, src) + table(["계약월", "거래량", "전월 대비", "전년 동월 대비", "중위 거래가", "중위 평당가",
+                     "가격지수 전월 대비", "가격지수 1년"], rows, "monthly"))
+
+
+def fresh_rows(df, by_sgg, counts=None):
+    df = df[~df["해제"]].sort_values(["거래금액", "계약일자"], ascending=[False, False])
+    if by_sgg:
+        df = df.drop_duplicates("시군구코드")
+    rows = []
+    for i, r in enumerate(df.head(10 if not by_sgg else 999).itertuples()):
+        first = f'<a href="{r.시군구코드}.html">{e(r.시군구)}</a>' if by_sgg == "link" else e(r.시군구)
+        lead = [first] if by_sgg else [i + 1]
+        tail = [f"{counts.get(r.시군구코드, 0):,}건"] if counts is not None else [e(r.법정동)]
+        rows.append((*lead, e(r.단지명), f"<b>{eok(r.거래금액_억)}</b>", f"{r.전용면적:.0f}㎡",
+                     f"{int(r.층)}층" if pd.notna(r.층) else "-", f"{r.계약일자:%m.%d}",
+                     "직거래" if r.거래유형 == "직거래" else "중개", *tail))
+    return rows
+
+
+FRESH_HEAD_SGG = ["시군구", "단지", "거래가", "전용", "층", "계약일", "유형", "오늘 공개"]
+FRESH_HEAD = ["순위", "단지", "거래가", "전용", "층", "계약일", "유형", "법정동"]
+
+
+def subnav(items):
+    """페이지 안 하위 메뉴(섹션 바로가기)."""
+    return '<nav class="subnav">' + "".join(f'<a href="#{a}">{e(t)}</a>' for a, t in items if a) + "</nav>"
+
+
 # ───────────────────────── 페이지 틀 ─────────────────────────
 class Site:
     def __init__(self, out: Path, base_url: str):
@@ -174,7 +286,8 @@ class Site:
 <a class="logo" href="{up}index.html">{MARK}<span>k-apts</span></a>
 <form class="search" role="search" onsubmit="return kGo(this)"><input name="q" list="k-regions" autocomplete="off"
  placeholder="지역 검색 (예: 대구 수성구)" aria-label="지역 검색"><button>검색</button></form>
-</div><nav class="menu wrap"><a href="{up}index.html">전국</a><a href="{up}r/11.html">서울</a><a href="{up}r/41.html">경기</a>
+</div><nav class="menu wrap"><a href="{up}index.html">전국</a><a href="{up}today.html">오늘 공개 거래</a>
+<a href="{up}stats.html">월간 통계</a><a href="{up}r/11.html">서울</a><a href="{up}r/41.html">경기</a>
 <a href="{up}r/27.html">대구</a><a href="{up}r/26.html">부산</a><a href="{up}about.html">기준 안내</a>
 <a class="app" href="{APP_URL}">자세히 분석하기</a></nav></header>
 <main class="wrap">{crumb}{body}</main>
@@ -188,7 +301,7 @@ class Site:
 <p class="links"><a href="{up}about.html">기준 안내</a><a href="{up}privacy.html">개인정보처리방침</a>
 <a href="{REPO_URL}/issues">문의</a><a href="{APP_URL}">대화형 분석 앱</a></p>
 </div></footer>
-<datalist id="k-regions"></datalist><script>window.K_UP="{up}"</script><script src="{up}regions.js" defer></script>
+<datalist id="k-regions"></datalist><script>window.K_UP="{up}"</script><script src="{up}regions.js" defer></script>{COPY_JS}
 </body></html>"""
         f = self.out / path
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -233,9 +346,9 @@ class Site:
 
 # ───────────────────────── 계산 ─────────────────────────
 def load_sido(sido, ref):
-    t = pd.read_parquet(OUT_DIR / f"trades_{sido}.parquet")
-    t = A.prepare(enrich(t))
-    t = t[~t["해제"] & (t["거래유형"] != "직거래")]
+    raw = A.prepare(enrich(pd.read_parquet(OUT_DIR / f"trades_{sido}.parquet")))
+    t_all = raw[~raw["해제"]]
+    t = t_all[t_all["거래유형"] != "직거래"]
     last = pd.Timestamp(t["계약일자"].max())
     recent = t[t["계약일자"] > last - pd.Timedelta(days=30)]
     q3 = t[t["계약일자"] > last - pd.Timedelta(days=90)]
@@ -243,7 +356,7 @@ def load_sido(sido, ref):
     pc = pc[(pc["최근_건수"] >= 2) & (pc["1년전_건수"] >= 2)].dropna(subset=["1년전대비"]).copy()
     pc["구간"] = pd.cut(pc["1년전대비"], [10, 20, 30, np.inf], right=False,
                       labels=["10~20%", "20~30%", "30% 이상"]).astype(str)
-    return recent, pc, last, q3
+    return recent, pc, last, q3, raw, t_all, t
 
 
 SIZES = [("84", "전용 84㎡ 안팎(이른바 국민평형)", 80, 86), ("59", "전용 59㎡ 안팎", 55, 62)]
@@ -269,7 +382,7 @@ def size_section(q3, name, last):
                    + table(["순위", "단지", "중위", "최저", "최고", "거래", "법정동", "준공"], rows, "rank"))
     if not out:
         return ""
-    return (f"<h2>{e(name)} 많이 찾는 면적별 시세</h2><p class='sub'>계약일 "
+    return (f"<h2 id='size'>{e(name)} 많이 찾는 면적별 시세</h2><p class='sub'>계약일 "
             f"{last - pd.Timedelta(days=89):%Y.%m.%d}~{last:%Y.%m.%d} 최근 3개월 거래(해제·직거래 제외)로 "
             "같은 면적대끼리 비교했습니다.</p>" + "".join(out))
 
@@ -300,7 +413,7 @@ def band_section(pc, label, sgg_level):
         return ""
     cnt = pc["구간"].value_counts()
     n10, n20, n30 = (int(cnt.get(k, 0)) for k in ["10~20%", "20~30%", "30% 이상"])
-    out = [f'<h2>1년 전보다 많이 오른 아파트</h2><p class="sub">{e(label)}에서 1년 전과 비교할 수 있는 '
+    out = [f'<h2 id="rise">1년 전보다 많이 오른 아파트</h2><p class="sub">{e(label)}에서 1년 전과 비교할 수 있는 '
            f'{len(pc):,}곳(같은 단지·같은 면적, 두 시점 각 2건 이상)의 최근 3개월과 1년 전 같은 3개월 '
            "중위 거래가를 비교했습니다.</p>"
            f'<div class="bands"><a href="#b30"><small>30% 이상</small><b>{n30}곳</b></a>'
@@ -391,12 +504,27 @@ def main():
     site.lastmod = meta["생성"][:10]
     stamp = f"{ref:%Y년 %m월} 기준 · 갱신 {meta['생성'][:10]}"
     nat = row("00")
+    gen = pd.Timestamp(meta["생성"][:10])
+    idx_all = pd.read_parquet(OUT_DIR / "index.parquet")
+    idx_g = {c: g.set_index("계약월")["지수"] for c, g in idx_all.groupby("코드")}
+    fresh = ST.Fresh(meta["생성"][:10])
+    fresh_by_sido, sido_month, nat_cnt, nat_px = {}, {}, [], []
+    sgg_month = {}
 
     sido_rows, sido_first = [], {}
     for sido in SIDO_SHORT:
         if not (OUT_DIR / f"trades_{sido}.parquet").exists():
             continue
-        recent, pc, last, q3 = load_sido(sido, ref)
+        recent, pc, last, q3, raw, t_all, t_px = load_sido(sido, ref)
+        new = fresh.pick(raw, last)
+        new = new[~new["해제"]]
+        new_cnt = new.groupby("시군구코드").size().to_dict()
+        fresh_by_sido[sido] = (new, new_cnt)
+        fresh.recent[sido] = raw[~raw["해제"] & (raw["계약일자"] > last - pd.Timedelta(days=3))]
+        cut = last.to_period("M").to_timestamp() - pd.DateOffset(months=26)
+        nat_cnt.append(t_all.loc[t_all["계약월"] >= cut, "계약월"].value_counts())
+        nat_px.append(t_px.loc[t_px["계약월"] >= cut, ["계약월", "거래금액_억", "평당가"]])
+        sido_month[sido] = ST.monthly(t_all, t_px, idx_g.get(sido), last)
         s = row(sido)
         short = SIDO_SHORT[sido]
         subs = reg[reg["sidocd"] == sido].sort_values("sggcd")
@@ -411,17 +539,35 @@ def main():
             r_sgg = recent[recent["시군구코드"] == code]
             p_sgg = pc[pc["시군구코드"] == code]
             name = f"{short} {rg['sggnm']}"
-            body = [hero(rg["sggnm"], short, ss), f'<p class="stamp">{stamp}</p>', site.ad()]
+            body = [hero(rg["sggnm"], short, ss), f'<p class="stamp">{stamp}</p>', None, site.ad()]
+            nav = []
+            n_sgg = new[new["시군구코드"] == code]
+            if len(n_sgg):
+                nav.append(("today", "오늘 공개"))
+                body.append(f'<h2 id="today">오늘 새로 공개된 거래</h2><p class="sub">{gen:%Y.%m.%d} 갱신에서 처음 '
+                            f"나타난 {rg['sggnm']} 거래 {len(n_sgg):,}건 중 비싼 순서 10건입니다(해제 거래 제외). "
+                            f'<a href="../today.html">전국 보기</a></p>'
+                            + table(FRESH_HEAD, fresh_rows(n_sgg, False), "rank"))
             if len(r_sgg):
                 tp = top10(r_sgg)
                 firsts.append((code, rg["sggnm"], tp.iloc[0], len(r_sgg)))
-                body.append(f"<h2>최근 한 달 실거래가 순위</h2><p class='sub'>계약일 "
+                nav.append(("rank", "실거래 순위"))
+                body.append(f"<h2 id='rank'>최근 한 달 실거래가 순위</h2><p class='sub'>계약일 "
                             f"{last - pd.Timedelta(days=29):%Y.%m.%d}~{last:%Y.%m.%d}, 거래 {len(r_sgg):,}건 중 "
                             "단지별 가장 비싼 거래 10곳입니다(직거래 제외).</p>" + rank_table(tp))
             sz = size_section(q3[q3["시군구코드"] == code], name, last)
             body.append(sz)
-            body.append(band_section(p_sgg, name, True))
-            body.append(f"<h2>{e(rg['sggnm'])} 시장 브리핑</h2><div class='card brief'>"
+            nav.append(("size", "면적별 시세") if sz else (None, None))
+            dm = ST.monthly(t_all[t_all["시군구코드"] == code], t_px[t_px["시군구코드"] == code], idx_g.get(code), last)
+            sgg_month[code] = (short, rg["sggnm"], dm)
+            mon = monthly_section(name, dm, last, gen)
+            body.append(mon)
+            nav.append(("monthly", "월별 통계") if mon else (None, None))
+            bs = band_section(p_sgg, name, True)
+            body.append(bs)
+            nav += [("rise", "많이 오른 곳") if bs else (None, None), ("brief", "시장 브리핑")]
+            body[2] = subnav(nav)
+            body.append(f"<h2 id='brief'>{e(rg['sggnm'])} 시장 브리핑</h2><div class='card brief'>"
                         + briefing_html(ss, row(sido), "법정동", short) + "</div>")
             body.append(sibling_section(short, code, sib))
             body.append(site.coupang)
@@ -435,22 +581,36 @@ def main():
                        "".join(body), [("전국", "index.html"), (short, f"r/{sido}.html"), (rg["sggnm"], None)])
         # ── 시도 페이지
         firsts.sort(key=lambda x: -x[2]["거래금액"])
-        body = [hero(short, None, s), f'<p class="stamp">{stamp}</p>', site.ad()]
+        body = [hero(short, None, s), f'<p class="stamp">{stamp}</p>', None, site.ad()]
+        nav = []
+        if len(new):
+            nav.append(("today", "오늘 공개"))
+            body.append(f'<h2 id="today">오늘 새로 공개된 거래 · 시군구별 최고</h2><p class="sub">{gen:%Y.%m.%d} '
+                        f"갱신에서 처음 나타난 {short} 거래 {len(new):,}건을 시군구마다 가장 비싼 1건씩 모았습니다"
+                        f'(해제 거래 제외). <a href="../today.html">전국 보기</a></p>'
+                        + table(FRESH_HEAD_SGG, fresh_rows(new, "link", new_cnt)))
         if firsts:
+            nav.append(("rank", "시군구별 1위"))
             rows = [(f'<a href="{c}.html">{e(n)}</a>', e(t.단지명), f"<b>{eok(t.거래금액_억)}</b>",
                      f"{t.전용면적:.0f}㎡", f"{t.계약일자:%m.%d}", f"{k:,}건") for c, n, t, k in firsts]
-            body.append("<h2>최근 한 달 시군구별 1위 거래</h2><p class='sub'>시군구 이름을 누르면 10위까지 볼 수 있습니다."
+            body.append("<h2 id='rank'>최근 한 달 시군구별 1위 거래</h2><p class='sub'>시군구 이름을 누르면 10위까지 볼 수 있습니다."
                         "</p>" + table(["시군구", "단지", "거래가", "전용", "계약일", "한 달 거래"], rows))
             sido_first[sido] = firsts[0]
         sg = stats[(stats["단계"] == "시군구") & (stats["상위"] == sido)].copy()
         sg["nm"] = sg["코드"].map(sname)
         sg = sg.sort_values("3개월", ascending=False, na_position="last")
-        body.append("<h2>시군구별 가격 흐름</h2><p class='sub'>같은 단지끼리 비교한 가격지수입니다. 최근 3개월 "
+        mon = monthly_section(short, sido_month[sido], last, gen)
+        body.append(mon)
+        if mon:
+            nav.append(("monthly", "월별 통계"))
+        nav += [("flow", "시군구별 흐름"), ("rise" if len(pc) else None, "많이 오른 곳"), ("brief", "시장 브리핑")]
+        body[2] = subnav(nav)
+        body.append("<h2 id='flow'>시군구별 가격 흐름</h2><p class='sub'>같은 단지끼리 비교한 가격지수입니다. 최근 3개월 "
                     "상승 폭이 큰 순서이고, 누르면 그 지역 순위와 브리핑을 볼 수 있습니다.</p><div class='rgrid'>"
                     + "".join(region_card(f"{r['코드']}.html", r["nm"], B.row_dict(r)) for _, r in sg.iterrows())
                     + "</div>")
-        body.append(band_section(pc, short, False))
-        body.append(f"<h2>{e(short)} 시장 브리핑</h2><div class='card brief'>" + briefing_html(s, nat, "시군구", None)
+        body.append(band_section(pc, short, False) if len(pc) else '')
+        body.append(f"<h2 id='brief'>{e(short)} 시장 브리핑</h2><div class='card brief'>" + briefing_html(s, nat, "시군구", None)
                     + "</div>")
         body.append(site.coupang)
         site.write(f"r/{sido}.html", f"{short} 아파트 실거래가 순위와 시군구별 시세 | k-apts",
@@ -459,6 +619,19 @@ def main():
                    "".join(body), [("전국", "index.html"), (short, None)])
         sido_rows.append((sido, short, s))
         print(f"{short}: 시군구 {len(subs)}쪽", flush=True)
+
+    # ── 전국 월별 통계 · 월간 통계 페이지
+    last_all = pd.Timestamp(meta["데이터_끝"])
+    nc = pd.concat(nat_cnt, axis=1, sort=True).sum(axis=1)
+    npx = pd.concat(nat_px)
+    nat_m = ST.monthly(pd.DataFrame({"계약월": nc.index.repeat(nc.astype(int).values)}), npx, idx_g.get("00"),
+                       last_all)
+    sm = summary_month(nat_m)
+    build_stats_page(site, nat_m, sido_month, sgg_month, sm, last_all, gen, stamp)
+    # ── 오늘 공개된 거래 페이지
+    today_counts = {c: int(len(v[0])) for c, v in fresh_by_sido.items()}
+    build_today_page(site, fresh, fresh_by_sido, today_counts, gen, last_all)
+    fresh.save(today_counts)
 
     # ── 첫 화면
     j = nat.get("판정", "판단 보류")
@@ -479,13 +652,18 @@ def main():
             f'<h1>전국 아파트값,<br>지금은 <em>{word}</em></h1><p class="lead">{ref:%Y년 %m월} 기준, '
             f"같은 단지끼리 비교한 가격지수는 최근 3개월 {pct(nat.get('3개월'))}, 1년 {pct(nat.get('1년'))}입니다. "
             "지역마다 오르는지 내리는지, 어디서 얼마에 거래됐는지 정리해 드립니다.</p>"
-            '<div class="cta"><a class="btn" href="r/27.html">대구 실거래가 순위 보기</a>'
-            '<a class="btn ghost" href="about.html">숫자 읽는 법</a></div>'
+            '<div class="cta"><a class="btn" href="today.html">오늘 공개된 거래 보기</a>'
+            '<a class="btn ghost" href="stats.html">월간 통계</a><a class="btn ghost" href="r/27.html">대구 실거래가 순위</a></div>'
             f'<div class="stats"><div><b>{meta["거래수"] / 1e4:,.0f}만 건</b><span>분석한 실거래</span></div>'
             f'<div><b>{n_sgg}곳</b><span>전국 시군구</span></div><div><b>매일</b><span>새벽 자동 갱신</span></div>'
             "</div></section>",
             f'<section class="card signal"><div class="signal-head"><h2>전국 시장 신호</h2>{badge(j)}</div>'
             f"{gauge(nat.get('3개월'))}{figures(nat)}</section>", site.ad()]
+    if sm is not None:
+        ln, src = news_lines("전국", nat_m, sm, last_all, gen)
+        body.append(f"<h2>{sm:%-m월} 전국 아파트 매매 통계</h2><p class='sub'>시도·시군구별 거래량과 가격지수 비교는 "
+                    "월간 통계에서 볼 수 있습니다.</p>"
+                    + quote_card(sm, ln, src, '<p class="more-in"><a href="stats.html">월간 통계 전체 보기 →</a></p>'))
 
     def first_line(c):
         if c not in sido_first:
@@ -519,6 +697,123 @@ def main():
     print(f"완료: {len(site.pages)}쪽 → {out}")
 
 
+def build_stats_page(site, nat_m, sido_month, sgg_month, m, last, gen, stamp):
+    """전국·시도·시군구 월별 통계를 한 페이지에서 비교(기사 근거용)."""
+    if m is None:
+        return
+    prev = m - pd.DateOffset(months=1)
+    st = nat_m.loc[m, "상태"]
+    tag = " (잠정)" if st == "잠정" else ""
+
+    def cells(d):
+        r = d.loc[m] if m in d.index else None
+        if r is None or pd.isna(r["거래량"]):
+            return ["-"] * 6
+        f = lambda v, n=1: f'<span class="{sign_cls(pct(v))}">{pct(v, n)}</span>'  # noqa: E731
+        return [f"{int(r['거래량']):,}", f(r["거래량_전월"], 0), f(r["거래량_전년"], 0), eok(r["중위가"]),
+                f(r["지수_전월"]), f(r["지수_전년"])]
+
+    head = ["거래량", f"전월({prev:%-m월}) 대비", "전년 동월 대비", "중위 거래가", "가격지수 전월 대비", "가격지수 1년"]
+    sido_rows = [(f'<a href="r/{c}.html">{SIDO_SHORT[c]}</a>', *cells(d)) for c, d in sido_month.items()]
+    sg = []
+    for c, (sh, nm, d) in sgg_month.items():
+        if m in d.index and pd.notna(d.loc[m, "거래량"]) and d.loc[m, "거래량"] >= 30:
+            sg.append((c, sh, nm, d.loc[m]))
+    by_vol = sorted(sg, key=lambda x: -x[3]["거래량"])[:15]
+    yoy = [x for x in sg if pd.notna(x[3]["거래량_전년"])]
+    up = sorted(yoy, key=lambda x: -x[3]["거래량_전년"])[:10]
+    dn = sorted(yoy, key=lambda x: x[3]["거래량_전년"])[:10]
+    idx_up = sorted([x for x in sg if pd.notna(x[3]["지수_전월"])], key=lambda x: -x[3]["지수_전월"])[:10]
+    idx_dn = sorted([x for x in sg if pd.notna(x[3]["지수_전월"])], key=lambda x: x[3]["지수_전월"])[:10]
+
+    def sgg_tbl(lst, col, n=1):
+        rows = [(i + 1, f'<a href="r/{c}.html">{e(sh)} {e(nm)}</a>', f"{int(r['거래량']):,}",
+                 f'<b class="{sign_cls(pct(r[col]))}">{pct(r[col], n)}</b>') for i, (c, sh, nm, r) in enumerate(lst)]
+        return table(["순위", "시군구", "거래량", "변동"], rows, "rank")
+
+    body = [f'<h1>{m:%Y년 %-m월} 아파트 매매 월간 통계{tag}</h1><p class="stamp">{stamp}</p>',
+            subnav([("nat", "전국 월별"), ("sido", "시도 비교"), ("vol", "거래 많은 시군구"), ("yoy", "거래량 증감"),
+                    ("idx", "가격지수 변동")]),
+            monthly_section("전국", nat_m, last, gen, "nat"),
+            f'<h2 id="sido">시도별 {m:%-m월} 비교</h2><p class="sub">시도 이름을 누르면 그 시도의 월별 통계와 '
+            "시군구별 순위로 갑니다.</p>" + table(["시도", *head], sido_rows),
+            f'<h2 id="vol">{m:%-m월} 거래가 많은 시군구</h2><p class="sub">해제 거래를 뺀 매매 신고 건수 순서입니다.</p>'
+            + sgg_tbl(by_vol, "거래량_전년", 0).replace("<th>변동</th>", "<th>전년 동월 대비</th>"),
+            f'<h2 id="yoy">1년 전보다 거래가 많이 늘어난·줄어든 시군구</h2><p class="sub">{m:%-m월} 거래 30건 이상인 '
+            "시군구만 비교했습니다.</p><div class='two'><div><h3>늘어난 곳</h3>" + sgg_tbl(up, "거래량_전년", 0)
+            + "</div><div><h3>줄어든 곳</h3>" + sgg_tbl(dn, "거래량_전년", 0) + "</div></div>",
+            f'<h2 id="idx">가격지수가 전월보다 많이 오른·내린 시군구</h2><p class="sub">같은 단지·같은 면적끼리 비교한 '
+            "지수의 전월 대비 변동입니다. 한 달 변동은 거래 구성에 따라 흔들릴 수 있어 3개월 흐름과 함께 보세요.</p>"
+            "<div class='two'><div><h3>오른 곳</h3>" + sgg_tbl(idx_up, "지수_전월") + "</div><div><h3>내린 곳</h3>"
+            + sgg_tbl(idx_dn, "지수_전월") + "</div></div>",
+            site.coupang]
+    nat = nat_m.loc[m]
+    desc = (f"{m:%Y년 %-m월} 전국 아파트 매매 {int(nat['거래량']):,}건(전월 대비 {pct(nat['거래량_전월'], 0)}, "
+            f"전년 동월 대비 {pct(nat['거래량_전년'], 0)}). 시도·시군구별 거래량과 중위 거래가, 가격지수 변동을 "
+            "기사 인용용 문장과 함께 정리했습니다.")
+    site.write("stats.html", f"{m:%Y년 %-m월} 아파트 매매 월간 통계 · 시도·시군구 거래량 | k-apts", desc,
+               "".join(body), [("전국", "index.html"), ("월간 통계", None)])
+
+
+def build_today_page(site, fresh, by_sido, counts, gen, last):
+    """이번 갱신에서 처음 공개된 실거래: 시도별 건수와 시군구별 최고가."""
+    total = sum(counts.values())
+    if fresh.ready:
+        log = dict(fresh.log)
+        log[fresh.today] = counts
+        days = sorted(log)[-14:]
+        daily = [(d, sum(log[d].values())) for d in days]
+        trend = ""
+        if len(daily) >= 2:
+            vmax = max(v for _, v in daily) or 1
+            trend = ("<h2 id='trend'>날짜별 공개 건수</h2><p class='sub'>매일 새벽 갱신 때 새로 나타난 거래 수입니다"
+                     "(주말·공휴일 신고분은 다음 평일에 몰립니다).</p>"
+                     + table(["갱신일", "전국 새 거래"], [(d[5:].replace("-", "."), vol_bar(v, vmax))
+                                                       for d, v in reversed(daily)]))
+            if len(daily) >= 14:
+                w1, w0 = sum(v for _, v in daily[-7:]), sum(v for _, v in daily[-14:-7])
+                trend = (f"<p class='lead'>최근 7일 공개 {w1:,}건, 그 전 7일 {w0:,}건"
+                         f"({pct((w1 / w0 - 1) * 100 if w0 else None, 0)}).</p>" + trend)
+        intro = (f"<p class='lead'>{gen:%Y년 %-m월 %-d일} 새벽 갱신에서 전국 <b>{total:,}건</b>의 아파트 매매 실거래가 "
+                 f"새로 공개됐습니다({fresh.base_date} 갱신과 비교, 해제 거래 제외).</p>")
+        sido_rows = [(f'<a href="#s{c}">{SIDO_SHORT[c]}</a>', f"{n:,}건") for c, n in
+                     sorted(counts.items(), key=lambda x: -x[1]) if n]
+        parts = [intro, subnav([("bysido", "시도별 건수"), ("trend" if trend else None, "날짜별 추이")]
+                               + [(f"s{c}", SIDO_SHORT[c]) for c, n in counts.items() if n]),
+                 "<h2 id='bysido'>시도별 새 거래</h2>" + table(["시도", "새로 공개"], sido_rows), trend]
+        for c, (new, cnt) in by_sido.items():
+            if len(new):
+                parts.append(f'<h2 id="s{c}"><a href="r/{c}.html">{SIDO_SHORT[c]}</a> 시군구별 최고 거래 '
+                             f'<small class="muted">{len(new):,}건</small></h2>'
+                             + table(FRESH_HEAD_SGG, fresh_rows(new, True, cnt)))
+        title = f"오늘 공개된 아파트 실거래가 · 시군구별 최고 ({gen:%Y.%m.%d}) | k-apts"
+        desc = (f"{gen:%Y년 %-m월 %-d일} 새로 공개된 전국 아파트 매매 실거래 {total:,}건을 시도·시군구별 최고가로 "
+                "정리했습니다. 매일 새벽 국토교통부 실거래가 갱신분 기준.")
+    else:
+        # 비교할 전날 목록이 아직 없을 때(첫 실행): 최근 계약일 기준으로 대신 보여 준다.
+        lo = last - pd.Timedelta(days=2)
+        parts = [f"<p class='lead'>새로 공개된 거래 집계는 다음 갱신부터 시작합니다. 그동안은 최근 3일"
+                 f"({lo:%m.%d}~{last:%m.%d}) 계약된 거래를 시군구별 최고가로 보여 드립니다.</p>",
+                 subnav([(f"s{c}", SIDO_SHORT[c]) for c in by_sido])]
+        for c, (new, cnt) in by_sido.items():
+            rec = fresh.recent.get(c)
+            if rec is not None and len(rec):
+                rc = rec.groupby("시군구코드").size().to_dict()
+                parts.append(f'<h2 id="s{c}"><a href="r/{c}.html">{SIDO_SHORT[c]}</a> 시군구별 최고 거래</h2>'
+                             + table(FRESH_HEAD_SGG[:-1] + ["3일 거래"], fresh_rows(rec, True, rc)))
+        title = "최근 공개된 아파트 실거래가 · 시군구별 최고 | k-apts"
+        desc = "최근 계약된 전국 아파트 매매 실거래를 시도·시군구별 최고가로 정리했습니다. 매일 새벽 갱신."
+    body = (f'<h1>오늘 공개된 아파트 실거래가</h1><p class="sub">아파트 매매는 계약 후 30일 안에 신고하고, '
+            "신고된 거래는 국토교통부 실거래가 자료로 공개됩니다. 신고일은 공개되지 않아, 매일 새벽 갱신 때 처음 나타난 거래를 '새로 공개된 거래'로 "
+            "셉니다.</p>" + "".join(parts) + site.coupang)
+    site.write("today.html", title, desc, body, [("전국", "index.html"), ("오늘 공개 거래", None)])
+
+
+COPY_JS = """<script>document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.copy');
+if(!b)return;var t=b.getAttribute('data-copy');var done=function(){b.textContent='복사됨';setTimeout(function(){b.textContent='문장 복사'},1500)};
+if(navigator.clipboard){navigator.clipboard.writeText(t).then(done,function(){})}else{var a=document.createElement('textarea');
+a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');done()}catch(e){}a.remove()}});</script>"""
+
 SEARCH_JS = """(function(){var d=document.getElementById('k-regions');if(!d)return;
 Object.keys(window.K_REGIONS).forEach(function(k){var o=document.createElement('option');o.value=k;d.appendChild(o);});})();
 function kGo(f){var q=(f.q.value||'').trim().replace(/\\s+/g,' ');var R=window.K_REGIONS||{};var hit=R[q];
@@ -541,6 +836,14 @@ ABOUT = """<h1>기준 안내</h1>
 <h2>많이 오른 아파트</h2>
 <ul><li>같은 단지·같은 면적의 최근 3개월 중위 거래가를 1년 전 같은 3개월 중위 거래가와 비교합니다.</li>
 <li>두 시점 모두 2건 이상 거래된 곳만 셉니다. 거래가 적으면 층·향 차이로 변동률이 크게 나올 수 있습니다.</li></ul>
+<h2>월별 통계</h2>
+<ul><li>계약월 기준입니다. 거래량은 해제 거래를 뺀 전체 매매 신고 건수(직거래 포함), 중위 거래가·평당가는 직거래를
+뺀 거래로 계산합니다.</li>
+<li>계약 후 30일 안에 신고하므로 이번 달은 '집계 중', 신고기한이 남은 지난달은 '잠정'으로 표시합니다.</li>
+<li>'기사 인용용' 문장은 표의 숫자를 그대로 문장으로 옮긴 것이며, 인용할 때 자료 출처와 집계일을 함께 적어 주세요.</li></ul>
+<h2>오늘 공개된 거래</h2>
+<ul><li>실거래가 자료에는 신고일이 없어, 매일 새벽 갱신 때 전날 갱신에 없던 거래(최근 2개월 계약분)를 새로 공개된
+거래로 셉니다. 해제 거래는 뺍니다.</li></ul>
 <h2>이 자료로 알 수 없는 것</h2>
 <ul><li>호가·매물 수, 전세가, 동·층·향별 선호, 급매 여부</li><li>미래 가격. 이 자료는 과거 계약 기록입니다.</li></ul>
 <h2>데이터 출처</h2>

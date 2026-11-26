@@ -11,7 +11,7 @@ on:
     types: [completed]
   push:
     branches: [main]
-    paths: ["site_build.py", "site_assets/**", "ads.py", "briefing.py", "analysis.py", ".github/workflows/site.yml"]
+    paths: ["site_build.py", "site_stats.py", "site_assets/**", "ads.py", "briefing.py", "analysis.py", ".github/workflows/site.yml"]
   workflow_dispatch:
 
 permissions:
@@ -37,6 +37,12 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements-collect.txt
+      # '오늘 공개된 거래'용: 전날 빌드가 본 거래 목록을 캐시로 이어 받는다(가장 최근 것 복원)
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/seen
+          key: seen-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: seen-
       - name: 사이트 생성
         env:
           GA_ID: ${{ vars.GA_ID }}
@@ -51,6 +57,10 @@ jobs:
           SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
           SITE_URL: ${{ vars.SITE_URL || 'https://mapcityne.github.io/daegu-apt-dashboard' }}
         run: python -u site_build.py --out site
+      - uses: actions/cache/save@v4
+        with:
+          path: data/seen
+          key: seen-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

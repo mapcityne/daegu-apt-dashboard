@@ -283,3 +283,8 @@ h2 a { color: inherit; }
 .vbar i { display: block; height: 100%; background: var(--navy); border-radius: 4px; }
 table.monthly td { white-space: nowrap; }
 @media (max-width: 520px) { .vbar { width: 40px; } .quote { padding: 1rem; } }
+
+/* 서울·대구 기간별 표 */
+.ptbl small { display: block; font-size: .74rem; font-weight: 400; color: var(--muted); }
+.ptbl thead a { color: var(--ink); }
+.ptbl td.na { color: var(--muted); font-weight: 400; font-size: .86rem; }

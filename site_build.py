@@ -195,7 +195,7 @@ def josa(word, a, b):
 
 
 FOCUS = [("11", "서울"), ("27", "대구")]
-PERIODS = [("1주일", 7), ("1달", 30), ("2달", 60), ("3달", 90)]
+PERIODS = [("2주일", 14), ("1달", 30), ("2달", 60), ("3달", 90)]
 MIN_PAIRS = 30  # 비교 단지·면적이 이보다 적으면 변동률을 내지 않는다
 
 
@@ -286,7 +286,7 @@ def story_items(res, gen, data_end, limit=None, page=False):
                                                  f"{dspan(rr[lb]['직전시작'], rr[lb]['직전끝'])}"
                                                  f"({rr[lb]['비교']:,}곳 비교)" for lb, _ in PERIODS)
                       + ". " + PERIOD_BASIS.split(" 거래:")[0]))
-        w, m = rr["1주일"], rr["1달"]
+        w, m = rr["2주일"], rr["1달"]
         if w["최고"] is not None:
             t = w["최고"]
             line = (f"{dspan(w['시작'], w['끝'])} 계약된 {city} 아파트 최고가는 {t['시군구']} {t['법정동']} {t['단지명']} "
@@ -301,7 +301,7 @@ def story_items(res, gen, data_end, limit=None, page=False):
             items.append((f"{city} 최근 최고가 거래", line, f"r/{c}.html",
                           "해제·직거래를 뺀 신고 거래 중 거래금액 최고. 신고된 실거래가 그대로"))
         items.append((f"{city} 신고가 거래",
-                      f"{city}에서 최근 1주일({dspan(w['시작'], w['끝'])}) 계약 {w['거래']:,}건 중 {w['신고가']:,}건, "
+                      f"{city}에서 최근 2주일({dspan(w['시작'], w['끝'])}) 계약 {w['거래']:,}건 중 {w['신고가']:,}건, "
                       f"최근 1달({dspan(m['시작'], m['끝'])}) {m['거래']:,}건 중 {m['신고가']:,}건이 같은 단지·같은 면적의 "
                       "이전 최고가를 넘었다.", f"r/{c}.html",
                       "해제·직거래 제외 신고 거래 기준. 신고가: 2023년 12월 이후 같은 단지·같은 면적의 이전 날짜 최고가를 "
@@ -828,7 +828,7 @@ def main():
             f'<b>{e(j)}</b>{"로" if j.endswith("류") else "으로"} 판정했습니다.</p>'
             '<p class="home-links"><a href="news.html">주요 뉴스</a><a href="today.html">오늘 공개된 거래</a><a href="stats.html">월간 통계</a>'
             '<a href="r/27.html">대구 실거래가 순위</a></p></section>',
-            '<section class="signal"><h2>서울·대구 기간별 시세</h2><p class="sub">최근 1주일·1달·2달·3달 계약을 '
+            '<section class="signal"><h2>서울·대구 기간별 시세</h2><p class="sub">최근 2주일·1달·2달·3달 계약을 '
             '바로 앞 같은 길이 기간과 같은 단지·같은 면적끼리 비교했습니다.</p>'
             f"{period_table(pres)}"
             f'<p class="sig-note">{PERIOD_BASIS}<br>최근 계약은 신고기한(계약 후 30일) 전이라 바뀔 수 있습니다.<br>'

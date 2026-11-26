@@ -276,16 +276,18 @@ class Site:
 <meta property="og:site_name" content="k-apts"><meta property="og:locale" content="ko_KR">
 <meta property="og:image" content="{self.base_url}/og.png"><meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#13234A">{self.verify}
+<meta name="theme-color" content="#0E1A2E">{self.verify}
 <link rel="icon" href="{up}mark.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="{up}logo-mark.png">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;700&display=swap">
 <link rel="stylesheet" href="{up}style.css">
 {ld}{self.head_ads}
 </head><body>
 <header class="top"><div class="shell bar">
 <button type="button" class="navbtn" aria-label="메뉴 열기" aria-controls="side" aria-expanded="false"
  onclick="kNav(this)"><span></span><span></span><span></span></button>
-<a class="logo" href="{up}index.html">{MARK}<span>k-apts</span></a>
+<a class="logo" href="{up}index.html">{MARK}<span>k-apts<small>실거래가 리포트</small></span></a>
 <form class="search" role="search" onsubmit="return kGo(this)"><input name="q" list="k-regions" autocomplete="off"
  placeholder="지역 검색 (예: 대구 수성구)" aria-label="지역 검색"><button>검색</button></form>
 </div></header>

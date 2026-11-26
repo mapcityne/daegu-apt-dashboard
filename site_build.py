@@ -282,16 +282,16 @@ class Site:
 <link rel="stylesheet" href="{up}style.css">
 {ld}{self.head_ads}
 </head><body>
-<header class="top"><div class="wrap">
+<header class="top"><div class="shell bar">
+<button type="button" class="navbtn" aria-label="메뉴 열기" aria-controls="side" aria-expanded="false"
+ onclick="kNav(this)"><span></span><span></span><span></span></button>
 <a class="logo" href="{up}index.html">{MARK}<span>k-apts</span></a>
 <form class="search" role="search" onsubmit="return kGo(this)"><input name="q" list="k-regions" autocomplete="off"
  placeholder="지역 검색 (예: 대구 수성구)" aria-label="지역 검색"><button>검색</button></form>
-</div><nav class="menu wrap"><a href="{up}index.html">전국</a><a href="{up}today.html">오늘 공개 거래</a>
-<a href="{up}stats.html">월간 통계</a><a href="{up}r/11.html">서울</a><a href="{up}r/41.html">경기</a>
-<a href="{up}r/27.html">대구</a><a href="{up}r/26.html">부산</a><a href="{up}about.html">기준 안내</a>
-<a class="app" href="{APP_URL}">자세히 분석하기</a></nav></header>
-<main class="wrap">{crumb}{body}</main>
-<footer class="foot"><div class="wrap">
+</div></header>
+<div class="shell layout">{self.side(path, up)}<div class="scrim" onclick="kNav()"></div>
+<main class="content">{crumb}{body}</main></div>
+<footer class="foot"><div class="shell">
 <div class="brand">{MARK}<span>k-apts</span></div>
 <p>국토교통부 아파트 매매 실거래가를 매일 새벽 받아 전국 시군구의 가격 흐름을 계산합니다.</p>
 <p>실거래가: 국토교통부(공공데이터포털). 미분양·주택 준공: 국토교통부, 인구 이동: 국가데이터처(KOSIS).
@@ -308,6 +308,30 @@ class Site:
         f.write_text(doc, encoding="utf-8")
         if index:
             self.pages.append(path)
+
+    def side(self, path, up):
+        """왼쪽 트리 메뉴: 시세 보기 / 지역별 시세(시도 ▸ 시군구) / 안내. 지금 보는 페이지와 그 시도를 펼쳐 둔다."""
+        cur_sido = path[2:4] if path.startswith("r/") else None
+
+        def link(href, text, cls=""):
+            on = " on" if href == path else ""
+            cur = ' aria-current="page"' if on else ""
+            return f'<a class="{(cls + on).strip()}" href="{up}{href}"{cur}>{e(text)}</a>'
+
+        main_links = [("index.html", "전국 시세"), ("today.html", "오늘 공개 거래"), ("stats.html", "월간 통계")]
+        out = ['<aside class="side" id="side"><nav aria-label="사이트 메뉴">',
+               '<p class="side-h">시세 보기</p><ul class="tree">'
+               + "".join(f"<li>{link(h, t)}</li>" for h, t in main_links) + "</ul>",
+               '<p class="side-h">지역별 시세</p><ul class="tree">']
+        for sido, short, subs in getattr(self, "tree", []):
+            op = " open" if sido == cur_sido else ""
+            kids = "".join(f"<li>{link(f'r/{c}.html', nm)}</li>" for c, nm in subs)
+            out.append(f'<li><details{op}><summary>{e(short)}</summary><ul>'
+                       f'<li>{link(f"r/{sido}.html", f"{short} 전체", "all")}</li>{kids}</ul></details></li>')
+        out.append('</ul><p class="side-h">안내</p><ul class="tree">'
+                   f'<li>{link("about.html", "기준 안내")}</li><li>{link("privacy.html", "개인정보처리방침")}</li>'
+                   f'<li><a class="ext" href="{APP_URL}">대화형 분석 앱 ↗</a></li></ul></nav></aside>')
+        return "".join(out)
 
     def jsonld(self, path, crumbs):
         """검색 결과에 경로(전국 › 시도 › 시군구)가 보이도록 BreadcrumbList, 첫 화면엔 WebSite."""
@@ -501,6 +525,8 @@ def main():
     (out / "regions.js").write_text(
         "window.K_REGIONS=" + json.dumps(rmap, ensure_ascii=False) + ";\n" + SEARCH_JS, encoding="utf-8")
     site = Site(out, a.base_url)
+    site.tree = [(sd, SIDO_SHORT[sd], [(r.sggcd, r.sggnm) for r in reg[reg["sidocd"] == sd].sort_values("sggcd").itertuples()])
+                 for sd in SIDO_SHORT if (OUT_DIR / f"trades_{sd}.parquet").exists()]
     site.lastmod = meta["생성"][:10]
     stamp = f"{ref:%Y년 %m월} 기준 · 갱신 {meta['생성'][:10]}"
     nat = row("00")
@@ -809,7 +835,9 @@ def build_today_page(site, fresh, by_sido, counts, gen, last):
     site.write("today.html", title, desc, body, [("전국", "index.html"), ("오늘 공개 거래", None)])
 
 
-COPY_JS = """<script>document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.copy');
+COPY_JS = """<script>function kNav(b){var o=document.body.classList.toggle('nav-open');
+var x=document.querySelector('.navbtn');if(x)x.setAttribute('aria-expanded',o?'true':'false');}
+document.addEventListener('keydown',function(ev){if(ev.key==='Escape')document.body.classList.remove('nav-open');});document.addEventListener('click',function(ev){var b=ev.target.closest&&ev.target.closest('.copy');
 if(!b)return;var t=b.getAttribute('data-copy');var done=function(){b.textContent='복사됨';setTimeout(function(){b.textContent='문장 복사'},1500)};
 if(navigator.clipboard){navigator.clipboard.writeText(t).then(done,function(){})}else{var a=document.createElement('textarea');
 a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');done()}catch(e){}a.remove()}});</script>"""

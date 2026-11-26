@@ -185,3 +185,5 @@ table.rank tbody tr:nth-child(3) td:first-child { background: radial-gradient(ci
   .bands b { font-size: 1.2rem; }
 }
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.foot .links.sido { gap: .3rem .9rem; font-size: .84rem; }
+.foot .links.sido a { color: var(--muted); font-weight: 500; }

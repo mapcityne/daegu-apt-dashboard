@@ -1,7 +1,7 @@
 # 정적 사이트(광고 게재용) 생성 → GitHub Pages
 # 데이터 갱신(update-data)이 끝나면, 또는 코드가 바뀌면 다시 만든다.
 # 광고 설정: 저장소 Settings > Secrets and variables > Actions > Variables
-#   GA_ID(구글 애널리틱스 측정 ID), ADSENSE_CLIENT, ADFIT_UNIT_PC, ADFIT_UNIT_MO, COUPANG_ID, COUPANG_TRACKING, (선택) COUPANG_TEMPLATE
+#   GA_ID(구글 애널리틱스 측정 ID), NAVER_SITE_VERIFICATION, BING_SITE_VERIFICATION(소유 확인 meta 값), ADSENSE_CLIENT, ADFIT_UNIT_PC, ADFIT_UNIT_MO, COUPANG_ID, COUPANG_TRACKING, (선택) COUPANG_TEMPLATE
 #   SITE_DOMAIN (예: k-apts.kr, 도메인 연결 후), SITE_URL (예: https://k-apts.kr)
 name: site
 
@@ -40,6 +40,8 @@ jobs:
       - name: 사이트 생성
         env:
           GA_ID: ${{ vars.GA_ID }}
+          NAVER_SITE_VERIFICATION: ${{ vars.NAVER_SITE_VERIFICATION }}
+          BING_SITE_VERIFICATION: ${{ vars.BING_SITE_VERIFICATION }}
           ADSENSE_CLIENT: ${{ vars.ADSENSE_CLIENT }}
           ADFIT_UNIT_PC: ${{ vars.ADFIT_UNIT_PC }}
           ADFIT_UNIT_MO: ${{ vars.ADFIT_UNIT_MO }}

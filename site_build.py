@@ -136,10 +136,19 @@ class Site:
         self.adfit = ads.adfit(g("ADFIT_UNIT_PC"), g("ADFIT_UNIT_MO"))
         self.coupang = ads.coupang_block(g("COUPANG_ID"), g("COUPANG_TRACKING"), g("COUPANG_TEMPLATE"))
         self.ads_txt = ads.ads_txt(g("ADSENSE_CLIENT"))
+        # 검색엔진 소유 확인(네이버 서치어드바이저·빙 웹마스터). 값이 있을 때만 meta를 넣는다.
+        self.verify = "".join(f'\n<meta name="{n}" content="{e(v)}">' for n, v in [
+            ("naver-site-verification", g("NAVER_SITE_VERIFICATION")), ("msvalidate.01", g("BING_SITE_VERIFICATION"))]
+            if re.fullmatch(r"[A-Za-z0-9_-]{8,80}", v))
 
-    def write(self, path: str, title: str, desc: str, body: str, crumbs=None):
+    def url(self, path):
+        return f"{self.base_url}/" if path == "index.html" else f"{self.base_url}/{path}"
+
+    def write(self, path: str, title: str, desc: str, body: str, crumbs=None, index=True):
         depth = path.count("/")
         up = "../" * depth
+        url = self.url(path)
+        robots = "" if index else '<meta name="robots" content="noindex">\n'
         crumb = ""
         if crumbs:
             crumb = '<nav class="crumb">' + " › ".join(
@@ -149,10 +158,14 @@ class Site:
 <html lang="ko"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(title)}</title><meta name="description" content="{e(desc)}">
-<link rel="canonical" href="{self.base_url}/{path}">
+{robots}<link rel="canonical" href="{url}">
 <meta property="og:title" content="{e(title)}"><meta property="og:description" content="{e(desc)}">
-<meta property="og:type" content="website"><meta property="og:url" content="{self.base_url}/{path}">
-<link rel="icon" href="{up}mark.svg" type="image/svg+xml">
+<meta property="og:type" content="website"><meta property="og:url" content="{url}">
+<meta property="og:site_name" content="k-apts"><meta property="og:locale" content="ko_KR">
+<meta property="og:image" content="{self.base_url}/og.png"><meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#13234A">{self.verify}
+<link rel="icon" href="{up}mark.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="{up}logo-mark.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="{up}style.css">
 {ld}{self.head_ads}
@@ -171,6 +184,7 @@ class Site:
 <p>실거래가: 국토교통부(공공데이터포털). 미분양·주택 준공: 국토교통부, 인구 이동: 국가데이터처(KOSIS).
 행정구역 경계: 통계청 SGIS, vuski/admdongkor(CC BY 4.0).</p>
 <p>이 사이트는 참고 자료이며 투자 판단의 근거로 정확성을 보증하지 않습니다.</p>
+<p class="links sido">{"".join(f'<a href="{up}r/{c}.html">{n}</a>' for c, n in SIDO_SHORT.items())}</p>
 <p class="links"><a href="{up}about.html">기준 안내</a><a href="{up}privacy.html">개인정보처리방침</a>
 <a href="{REPO_URL}/issues">문의</a><a href="{APP_URL}">대화형 분석 앱</a></p>
 </div></footer>
@@ -179,16 +193,20 @@ class Site:
         f = self.out / path
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(doc, encoding="utf-8")
-        self.pages.append(path)
+        if index:
+            self.pages.append(path)
 
     def jsonld(self, path, crumbs):
         """검색 결과에 경로(전국 › 시도 › 시군구)가 보이도록 BreadcrumbList, 첫 화면엔 WebSite."""
         if path == "index.html":
-            d = {"@context": "https://schema.org", "@type": "WebSite", "name": "k-apts",
-                 "alternateName": "k-apts 전국 아파트 실거래가", "url": f"{self.base_url}/", "inLanguage": "ko"}
+            org = {"@type": "Organization", "@id": f"{self.base_url}/#org", "name": "k-apts",
+                   "url": f"{self.base_url}/", "logo": f"{self.base_url}/logo-mark.png"}
+            d = {"@context": "https://schema.org", "@graph": [org, {
+                "@type": "WebSite", "name": "k-apts", "alternateName": "k-apts 전국 아파트 실거래가",
+                "url": f"{self.base_url}/", "inLanguage": "ko", "publisher": {"@id": f"{self.base_url}/#org"}}]}
         elif crumbs:
             d = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
-                {"@type": "ListItem", "position": i + 1, "name": t, "item": f"{self.base_url}/{h or path}"}
+                {"@type": "ListItem", "position": i + 1, "name": t, "item": self.url(h or path)}
                 for i, (t, h) in enumerate(crumbs)]}
         else:
             return ""
@@ -200,7 +218,7 @@ class Site:
 
     def finish(self):
         lm = f"<lastmod>{self.lastmod}</lastmod>" if getattr(self, "lastmod", "") else ""
-        urls = "".join(f"<url><loc>{self.base_url}/{p}</loc>{lm}</url>" for p in self.pages)
+        urls = "".join(f"<url><loc>{self.url(p)}</loc>{lm}</url>" for p in self.pages)
         (self.out / "sitemap.xml").write_text(
             f'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
             f"{urls}</urlset>", encoding="utf-8")
@@ -355,6 +373,7 @@ def main():
     shutil.copy(BASE / "site_assets" / "style.css", out / "style.css")
     shutil.copy(BASE / "assets" / "logo.png", out / "logo.png")
     shutil.copy(BASE / "site_assets" / "logo-mark.png", out / "logo-mark.png")
+    shutil.copy(BASE / "site_assets" / "og.png", out / "og.png")
     (out / "mark.svg").write_text(MARK.replace('class="mark" ', 'xmlns="http://www.w3.org/2000/svg" '), encoding="utf-8")
 
     meta = json.loads((OUT_DIR / "meta.json").read_text(encoding="utf-8"))
@@ -495,8 +514,7 @@ def main():
     site.write("privacy.html", "개인정보처리방침 | k-apts", "k-apts 개인정보처리방침.", privacy,
                [("전국", "index.html"), ("개인정보처리방침", None)])
     site.write("404.html", "페이지를 찾을 수 없습니다 | k-apts", "", '<h1>페이지를 찾을 수 없습니다</h1>'
-               '<p><a href="index.html">전국 첫 화면으로 가기</a></p>')
-    site.pages.remove("404.html")
+               '<p><a href="index.html">전국 첫 화면으로 가기</a></p>', index=False)
     site.finish()
     print(f"완료: {len(site.pages)}쪽 → {out}")
 

@@ -550,12 +550,16 @@ class Site:
     def write(self, path: str, title: str, desc: str, body: str, crumbs=None, index=True):
         depth = path.count("/")
         up = "../" * depth
+        # 첫 화면 링크는 디렉터리 경로(./ 또는 ../)로 건다. /index.html 이라는 별도 URL이
+        # 생겨 검색엔진이 표준(canonical)과 다른 주소를 고르는 문제를 막는다.
+        home = up or "./"
         url = self.url(path)
         robots = "" if index else '<meta name="robots" content="noindex">\n'
         crumb = ""
         if crumbs:
             crumb = '<nav class="crumb">' + " › ".join(
-                f'<a href="{up}{h}">{e(t)}</a>' if h else e(t) for t, h in crumbs) + "</nav>"
+                f'<a href="{home if h == "index.html" else up + h}">{e(t)}</a>' if h else e(t)
+                for t, h in crumbs) + "</nav>"
         ld = self.jsonld(path, crumbs)
         doc = f"""<!doctype html>
 <html lang="ko"><head>
@@ -578,7 +582,7 @@ class Site:
 <header class="top"><div class="shell bar">
 <button type="button" class="navbtn" aria-label="메뉴 열기" aria-controls="side" aria-expanded="false"
  onclick="kNav(this)"><span></span><span></span><span></span></button>
-<a class="logo" href="{up}index.html">{MARK}<span>실거래가 리포트</span></a>
+<a class="logo" href="{home}">{MARK}<span>실거래가 리포트</span></a>
 <form class="search" role="search" onsubmit="return kGo(this)"><input name="q" list="k-regions" autocomplete="off"
  placeholder="지역 검색 (예: 대구 수성구)" aria-label="지역 검색"><button>검색</button></form>
 </div></header>
@@ -609,7 +613,8 @@ class Site:
         def link(href, text, cls=""):
             on = " on" if href == path else ""
             cur = ' aria-current="page"' if on else ""
-            return f'<a class="{(cls + on).strip()}" href="{up}{href}"{cur}>{e(text)}</a>'
+            target = (up or "./") if href == "index.html" else up + href
+            return f'<a class="{(cls + on).strip()}" href="{target}"{cur}>{e(text)}</a>'
 
         main_links = [("index.html", "전국 시세"), ("news.html", "주요 뉴스"), ("today.html", "오늘 공개 거래"),
                       ("stats.html", "월간 통계")]
@@ -814,7 +819,8 @@ def main():
     row = lambda c: B.row_dict(S.loc[c]) if c in S.index else {"판정": "판단 보류"}  # noqa: E731
     reg = regions()
     sname = reg.set_index("sggcd")["sggnm"]
-    rmap = {"전국": "index.html"} | {v: f"r/{k}.html" for k, v in SIDO_SHORT.items()} | {
+    # '전국'의 값이 빈 문자열이면 검색 스크립트가 디렉터리 경로(./, ../)로 이동한다(index.html 회피).
+    rmap = {"전국": ""} | {v: f"r/{k}.html" for k, v in SIDO_SHORT.items()} | {
         f"{SIDO_SHORT[r.sidocd]} {r.sggnm}": f"r/{r.sggcd}.html" for r in reg.itertuples()}
     (out / "regions.js").write_text(
         "window.K_REGIONS=" + json.dumps(rmap, ensure_ascii=False) + ";\n" + SEARCH_JS, encoding="utf-8")
@@ -1030,8 +1036,9 @@ def main():
     privacy = PRIVACY.replace("<h2>접속 기록</h2>", GA_NOTE + "<h2>접속 기록</h2>") if site.ga else PRIVACY
     site.write("privacy.html", "개인정보처리방침 | 실거래가 리포트", "실거래가 리포트 개인정보처리방침.", privacy,
                [("전국", "index.html"), ("개인정보처리방침", None)])
+    # 404는 임의의 깊은 경로에서 열릴 수 있어 상대 경로가 어긋난다. 첫 화면은 절대 주소로 건다.
     site.write("404.html", "페이지를 찾을 수 없습니다 | 실거래가 리포트", "", '<h1>페이지를 찾을 수 없습니다</h1>'
-               '<p><a href="index.html">전국 첫 화면으로 가기</a></p>', index=False)
+               f'<p><a href="{site.url("index.html")}">전국 첫 화면으로 가기</a></p>', index=False)
     site.finish()
     print(f"완료: {len(site.pages)}쪽 → {out}")
 
@@ -1158,8 +1165,8 @@ a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy
 SEARCH_JS = """(function(){var d=document.getElementById('k-regions');if(!d)return;
 Object.keys(window.K_REGIONS).forEach(function(k){var o=document.createElement('option');o.value=k;d.appendChild(o);});})();
 function kGo(f){var q=(f.q.value||'').trim().replace(/\\s+/g,' ');var R=window.K_REGIONS||{};var hit=R[q];
-if(!hit){var ks=Object.keys(R);for(var i=0;i<ks.length;i++){if(ks[i].replace(/ /g,'').indexOf(q.replace(/ /g,''))>=0){hit=R[ks[i]];break;}}}
-if(hit){location.href=(window.K_UP||'')+hit;}else{f.q.value='';f.q.placeholder='찾는 지역이 없습니다';}return false;}"""
+if(hit===undefined){var ks=Object.keys(R);for(var i=0;i<ks.length;i++){if(ks[i].replace(/ /g,'').indexOf(q.replace(/ /g,''))>=0){hit=R[ks[i]];break;}}}
+if(hit!==undefined){location.href=hit?(window.K_UP||'')+hit:(window.K_UP||'./');}else{f.q.value='';f.q.placeholder='찾는 지역이 없습니다';}return false;}"""
 
 
 ABOUT = """<h1>기준 안내</h1>

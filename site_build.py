@@ -127,6 +127,67 @@ def sibling_section(short, code, sib):
             "실거래가 순위와 브리핑으로 갑니다.</p><div class='plates sib'>" + "".join(items) + "</div>")
 
 
+def sgg_neighbors(limit=8):
+    """시군구 경계(geo/sgg.geojson)에서 서로 맞닿거나 아주 가까운 시군구를 찾는다(시도 경계 넘어 포함).
+
+    경계 꼭짓점을 약 1km 격자에 올려 같은·이웃 칸에 함께 있는 꼭짓점 수로 가까움을 잰다.
+    섬처럼 이웃이 없으면 중심점이 가까운 3곳을 쓴다."""
+    from collections import defaultdict
+    from regions import GEOJSON
+    g = json.loads(GEOJSON.read_text(encoding="utf-8"))
+    cell = defaultdict(set)
+    for f in g["features"]:
+        c, geo = f["properties"]["sggcd"], f["geometry"]
+        polys = [geo["coordinates"]] if geo["type"] == "Polygon" else geo["coordinates"]
+        for ring in (r for poly in polys for r in poly):
+            for x, y in ring:
+                cell[(round(x * 100), round(y * 100))].add(c)
+    adj = defaultdict(lambda: defaultdict(int))
+    for (kx, ky), cs in cell.items():
+        near = set().union(*(cell.get((kx + dx, ky + dy), set()) for dx in (-1, 0, 1) for dy in (-1, 0, 1)))
+        for a in cs:
+            for b in near - {a}:
+                adj[a][b] += 1
+    reg = regions().set_index("sggcd")
+    out = {}
+    for c in reg.index:
+        nb = sorted(adj.get(c, {}).items(), key=lambda x: -x[1])
+        if nb:
+            out[c] = [b for b, _ in nb[:limit]]
+        else:
+            d = ((reg["lat"] - reg.at[c, "lat"]) ** 2 + (reg["lon"] - reg.at[c, "lon"]) ** 2).drop(c)
+            out[c] = d.nsmallest(3).index.tolist()
+    return out
+
+
+def neighbor_section(code, nm, sido, nbs, S, reg):
+    """인근 시군구와 가격지수·거래량·중위 거래가 비교 표(시도 경계 넘어 포함)."""
+    rows_src = [c for c in [code] + nbs if c in S.index and c in reg.index]
+    if len(rows_src) < 2:
+        return ""
+    rows = []
+    for c in rows_src:
+        r = S.loc[c]
+        nmc = reg.at[c, "sggnm"] if reg.at[c, "sidocd"] == sido else reg.at[c, "지역명"]
+        lab = f"<b>{e(nmc)}</b>" if c == code else f'<a href="{c}.html">{e(nmc)}</a>'
+        c3 = pct(r["3개월"]) if pd.notna(r["3개월"]) else "-"
+        c1 = pct(r["1년"]) if pd.notna(r["1년"]) else "-"
+        n3 = f"{int(r['거래수_3개월']):,}건" if pd.notna(r["거래수_3개월"]) else "-"
+        rows.append([lab, f'<span class="{sign_cls(c3)}">{c3}</span>', f'<span class="{sign_cls(c1)}">{c1}</span>',
+                     eok(r["중위거래가"]), n3])
+    sub = S.loc[rows_src]
+    other = "(다른 시도 포함)" if any(reg.at[c, "sidocd"] != sido for c in rows_src) else ""
+    note = ""
+    if pd.notna(sub.at[code, "1년"]) and sub["1년"].notna().sum() >= 3:
+        rk = int((sub["1년"] > sub.at[code, "1년"]).sum()) + 1
+        note = (f" {e(nm)}의 1년 가격지수 변동({pct(sub.at[code, '1년'])})은 이 표의 {sub['1년'].notna().sum()}곳 중 "
+                f"{rk}번째입니다.")
+    return ("<h2 id='near'>인근 지역과 비교</h2><p class='sub'>경계가 맞닿거나 가까운 시군구입니다"
+            f"{other}. "
+            "가격지수는 같은 단지·같은 면적끼리 비교한 변동률, 거래 수와 중위 거래가는 최근 3개월 기준입니다."
+            f"{note}</p>" + table(["지역", "3개월", "1년", "중위 거래가", "거래 수(3개월)"], rows, "near"))
+
+
 # ───────────────────────── 월별 통계·오늘 공개 ─────────────────────────
 def chg_word(v, up="늘었", down="줄었"):
     if v is None or pd.isna(v):
@@ -824,6 +885,7 @@ def main():
         f"{SIDO_SHORT[r.sidocd]} {r.sggnm}": f"r/{r.sggcd}.html" for r in reg.itertuples()}
     (out / "regions.js").write_text(
         "window.K_REGIONS=" + json.dumps(rmap, ensure_ascii=False) + ";\n" + SEARCH_JS, encoding="utf-8")
+    nbmap, regi = sgg_neighbors(), reg.set_index("sggcd")
     site = Site(out, a.base_url)
     site.tree = [(sd, SIDO_SHORT[sd], [(r.sggcd, r.sggnm) for r in reg[reg["sidocd"] == sd].sort_values("sggcd").itertuples()])
                  for sd in SIDO_SHORT if (OUT_DIR / f"trades_{sd}.parquet").exists()]
@@ -891,10 +953,13 @@ def main():
             nav.append(("monthly", "월별 통계") if mon else (None, None))
             bs = band_section(p_sgg, name, True)
             body.append(bs)
-            nav += [("rise", "많이 오른 곳") if bs else (None, None), ("brief", "시장 브리핑")]
+            near = neighbor_section(code, rg["sggnm"], sido, nbmap.get(code, []), S, regi)
+            nav += [("rise", "많이 오른 곳") if bs else (None, None), ("brief", "시장 브리핑"),
+                    ("near", "인근 비교") if near else (None, None)]
             body[2] = subnav(nav)
             body.append(f"<h2 id='brief'>{e(rg['sggnm'])} 시장 브리핑</h2><div class='card brief'>"
                         + briefing_html(ss, row(sido), "법정동", short) + "</div>")
+            body.append(near)
             body.append(sibling_section(short, code, sib))
             body.append(site.coupang)
             site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | 실거래가 리포트",

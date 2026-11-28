@@ -771,6 +771,39 @@ def size_section(q3, name, last):
             "같은 면적대끼리 비교했습니다.</p>" + "".join(out))
 
 
+def dong_section(dg, sgg_nm, ref, show=12):
+    """법정동(동네)별 최근 3개월 시세 — data 브랜치 dong.parquet 집계 그대로. 거래 3건 미만 동은 뺀다."""
+    dg = dg[dg["거래수_3개월"].fillna(0) >= 3].dropna(subset=["중위거래가"])
+    if len(dg) < 2:
+        return ""
+    dg = dg.sort_values(["중위거래가", "거래수_3개월"], ascending=False)
+    busy = dg.sort_values("거래수_3개월", ascending=False).iloc[0]
+    top = dg.iloc[0]
+    lines = [f"최근 3개월 거래가 가장 많은 동네는 {busy['법정동']}({int(busy['거래수_3개월']):,}건), "
+             f"중위 거래가가 가장 높은 곳은 {top['법정동']}({eok(top['중위거래가'])})입니다."]
+    ch = dg.dropna(subset=["동일단지_1년"])
+    if len(ch) >= 2:
+        hi, lo = ch.loc[ch["동일단지_1년"].idxmax()], ch.loc[ch["동일단지_1년"].idxmin()]
+        lines.append(f"같은 단지끼리 1년 전과 비교하면 {hi['법정동']} {pct(hi['동일단지_1년'])}, "
+                     f"{lo['법정동']} {pct(lo['동일단지_1년'])}로 동네마다 차이가 있습니다.")
+
+    def tr(r):
+        c1 = pct(r["동일단지_1년"]) if pd.notna(r["동일단지_1년"]) else "-"
+        up = pct(r["상승비율"], 0, False) if pd.notna(r["상승비율"]) else "-"
+        py = f"{r['중위평당가']:,.0f}만원" if pd.notna(r["중위평당가"]) else "-"
+        return (f"<b>{e(r['법정동'])}</b>", f"{int(r['거래수_3개월']):,}건", f"<b>{eok(r['중위거래가'])}</b>", py,
+                (f'<span class="{sign_cls(c1)}">{c1}</span>' if c1 != "-" else "-"), up)
+    head = ["법정동", "거래", "중위 거래가", "3.3㎡당", "1년 변동", "오른 단지"]
+    rows = [tr(r) for _, r in dg.iterrows()]
+    rest = (f'<details class="as-table"><summary>나머지 {len(rows) - show}곳 보기</summary>'
+            + table(head, rows[show:]) + "</details>") if len(rows) > show else ""
+    w0 = ref - pd.DateOffset(months=2)
+    return (f"<h2 id='dong'>{e(sgg_nm)} 동네별 시세</h2><p class='sub'>{w0:%Y.%m}~{ref:%Y.%m} 계약 기준, "
+            "최근 3개월 거래가 3건 이상인 법정동을 중위 거래가 순서로 놓았습니다. 3.3㎡당은 전용면적 기준, "
+            "1년 변동과 오른 단지는 1년 전과 비교할 수 있는 단지가 5곳 이상인 동만 표시합니다.</p>"
+            + f"<p>{e(' '.join(lines))}</p>" + table(head, rows[:show]) + rest)
+
+
 def top10(g):
     return g.sort_values(["거래금액", "계약일자"], ascending=[False, False]).drop_duplicates("단지키").head(10)
 
@@ -886,6 +919,8 @@ def main():
     (out / "regions.js").write_text(
         "window.K_REGIONS=" + json.dumps(rmap, ensure_ascii=False) + ";\n" + SEARCH_JS, encoding="utf-8")
     nbmap, regi = sgg_neighbors(), reg.set_index("sggcd")
+    dong_all = pd.read_parquet(OUT_DIR / "dong.parquet")
+    dong_g = {k: g for k, g in dong_all.groupby("시군구코드")}
     site = Site(out, a.base_url)
     site.tree = [(sd, SIDO_SHORT[sd], [(r.sggcd, r.sggnm) for r in reg[reg["sidocd"] == sd].sort_values("sggcd").itertuples()])
                  for sd in SIDO_SHORT if (OUT_DIR / f"trades_{sd}.parquet").exists()]
@@ -946,6 +981,9 @@ def main():
             sz = size_section(q3[q3["시군구코드"] == code], name, last)
             body.append(sz)
             nav.append(("size", "면적별 시세") if sz else (None, None))
+            dsec = dong_section(dong_g.get(code, dong_all.iloc[0:0]), rg["sggnm"], ref)
+            body.append(dsec)
+            nav.append(("dong", "동네별 시세") if dsec else (None, None))
             dm = ST.monthly(t_all[t_all["시군구코드"] == code], t_px[t_px["시군구코드"] == code], idx_g.get(code), last)
             sgg_month[code] = (short, rg["sggnm"], dm)
             mon = monthly_section(name, dm, last, gen)
@@ -965,6 +1003,7 @@ def main():
             site.write(f"r/{code}.html", f"{name} 아파트 실거래가 순위와 시세 흐름 | 실거래가 리포트",
                        page_desc(name, ss, tp.iloc[0] if len(r_sgg) else None, len(r_sgg), ref,
                                  ("최근 한 달 실거래가 순위 10, " + ("84㎡·59㎡ 단지별 시세, " if sz else "")
+                                  + ("동네별 시세, " if dsec else "")
                                   + "1년 전보다 많이 오른 아파트") if len(r_sgg)
                                  else "시장 브리핑과 같은 시도 다른 시군구 시세"),
                        "".join(body), [("전국", "index.html"), (short, f"r/{sido}.html"), (rg["sggnm"], None)])
